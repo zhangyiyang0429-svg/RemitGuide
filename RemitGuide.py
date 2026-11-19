@@ -16,25 +16,44 @@ app_mode = st.sidebar.selectbox("选择功能模块", [
 ])
 
 if app_mode == "1. 汇率与成本透明化 (Cost Transparency)":
-    st.header("多银行汇率与费用实时比价")
-    col1, col2 = st.columns(2)
-    with col1:
-        send_amount = st.number_input("汇款金额 (CNY/HKD)", min_value=100, max_value=100000, value=10000, step=1000)
-    with col2:
-        transfer_dir = st.selectbox("汇款方向", ["南向 (Mainland -> HK)", "北向 (HK -> Mainland)"])
-    
-    st.subheader("各参与银行报价比较")
-    # 模拟多银行 API 返回数据
-    mock_quotes = pd.DataFrame({
-        "银行名称": ["Mock Bank A", "Mock Bank B", "Mock Bank C"],
-        "汇率 (CNY/HKD)": [1.0852, 1.0845, 1.0860],
-        "手续费 (HKD)": [50.0, 20.0, 80.0],
-        "预计到账": ["9,214.90 HKD", "9,220.84 HKD", "9,207.21 HKD"],
-        "报价有效期": ["45s", "12s (即将过期)", "58s"]
-    })
-    st.table(mock_quotes)
-    if st.button("选择最优报价并继续"):
-        st.success("已锁定 Mock Bank B 的最优报价！")
+    st.header("三家模拟银行报价")
+    st.caption("南向汇款（内地到香港）｜手续费从换汇后的港币金额中扣除。")
+    amount_cny = st.number_input(
+        "汇款金额（人民币）", min_value=100, max_value=100000,
+        value=10000, step=1000,
+    )
+
+    banks = [
+        ("Mock Bank A", "1.0852", 50, 45),
+        ("Mock Bank B", "1.0845", 20, 12),
+        ("Mock Bank C", "1.0860", 80, 58),
+    ]
+
+    quotes = []
+    for bank, rate, fee_hkd, validity in banks:
+        received_hkd = (Decimal(amount_cny) * Decimal(rate) - fee_hkd).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        quotes.append({
+            "银行": bank,
+            "汇率（港币 / 人民币）": rate,
+            "手续费（港币）": fee_hkd,
+            "预计到账（港币）": received_hkd,
+            "模拟有效期（秒）": validity,
+        })
+
+    quote_table = pd.DataFrame(quotes).sort_values(
+        "预计到账（港币）", ascending=False, ignore_index=True
+    )
+    best_quote = quote_table.iloc[0]
+    st.info(
+        f"预计到账最高的是 {best_quote['银行']}，"
+        f"可到账 {best_quote['预计到账（港币）']:,.2f} 港币。"
+    )
+    quote_table["预计到账（港币）"] = quote_table["预计到账（港币）"].map(
+        "{:,.2f}".format
+    )
+    st.table(quote_table)
 
 elif app_mode == "2. 预约前置检查机制 (Pre-order Check)":
     st.header("非交易时段预约与预审 (Pre-order & Pre-flight Check)")
