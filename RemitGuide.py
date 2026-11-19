@@ -9,17 +9,40 @@ st.title("💸 RemitGuide: A Cross-border Payment Assistant")
 st.markdown("*FTEC 5510 Project - Enhancing Payment Connect Experience*")
 
 # 侧边栏导航
-st.sidebar.header("导航栏")
-app_mode = st.sidebar.radio(
-    "选择功能模块",
-    [
-        "1. 汇率与成本透明化 (Cost Transparency)",
-        "2. 预约前置检查机制 (Pre-order Check)",
-        "3. 场景实验对比 (Experiment Comparison)",
-    ],
-    label_visibility="collapsed",
-)
+nav_modules = {
+    "1. 汇率与成本透明化 (Cost Transparency)": (
+        "汇款比价", ":material/swap_horiz:"
+    ),
+    "2. 预约前置检查机制 (Pre-order Check)": (
+        "预约预检", ":material/fact_check:"
+    ),
+    "3. 场景实验对比 (Experiment Comparison)": (
+        "场景实验", ":material/bar_chart:"
+    ),
+}
 
+if "active_nav_module" not in st.session_state:
+    st.session_state["active_nav_module"] = next(iter(nav_modules))
+
+
+def select_module(module):
+    st.session_state["active_nav_module"] = module
+
+
+app_mode = st.session_state["active_nav_module"]
+
+st.sidebar.subheader("功能模块")
+with st.sidebar.container(gap="medium"):
+    for module, (label, icon) in nav_modules.items():
+        st.button(
+            label,
+            icon=icon,
+            key=f"nav_{label}",
+            width="stretch",
+            type="primary" if app_mode == module else "secondary",
+            on_click=select_module,
+            args=(module,),
+        )
 if app_mode == "1. 汇率与成本透明化 (Cost Transparency)":
     st.header("三家模拟银行报价")
     st.caption("南向汇款（内地到香港）｜手续费从换汇后的港币金额中扣除。")
