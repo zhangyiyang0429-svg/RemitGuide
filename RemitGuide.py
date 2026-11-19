@@ -55,7 +55,7 @@ if app_mode == "1. 汇率与成本透明化 (Cost Transparency)":
         f"预计到账最高的是 {best_quote['银行']}，"
         f"可到账 {best_quote['预计到账（港币）']:,.2f} 港币。"
     )
-        display_quotes = quote_table.astype({
+    display_quotes = quote_table.astype({
         "汇率（港币 / 人民币）": "float64",
         "预计到账（港币）": "float64",
     })
