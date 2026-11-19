@@ -10,11 +10,15 @@ st.markdown("*FTEC 5510 Project - Enhancing Payment Connect Experience*")
 
 # 侧边栏导航
 st.sidebar.header("导航栏")
-app_mode = st.sidebar.selectbox("选择功能模块", [
-    "1. 汇率与成本透明化 (Cost Transparency)", 
-    "2. 预约前置检查机制 (Pre-order Check)", 
-    "3. 场景实验对比 (Experiment Comparison)"
-])
+app_mode = st.sidebar.radio(
+    "选择功能模块",
+    [
+        "1. 汇率与成本透明化 (Cost Transparency)",
+        "2. 预约前置检查机制 (Pre-order Check)",
+        "3. 场景实验对比 (Experiment Comparison)",
+    ],
+    label_visibility="collapsed",
+)
 
 if app_mode == "1. 汇率与成本透明化 (Cost Transparency)":
     st.header("三家模拟银行报价")
@@ -51,10 +55,39 @@ if app_mode == "1. 汇率与成本透明化 (Cost Transparency)":
         f"预计到账最高的是 {best_quote['银行']}，"
         f"可到账 {best_quote['预计到账（港币）']:,.2f} 港币。"
     )
-    quote_table["预计到账（港币）"] = quote_table["预计到账（港币）"].map(
-        "{:,.2f}".format
+        display_quotes = quote_table.astype({
+        "汇率（港币 / 人民币）": "float64",
+        "预计到账（港币）": "float64",
+    })
+
+    st.dataframe(
+        display_quotes,
+        hide_index=True,
+        column_config={
+            "银行": st.column_config.Column(
+                "报价银行",
+                help="提供这条报价的模拟银行。",
+            ),
+            "汇率（港币 / 人民币）": st.column_config.NumberColumn(
+                "汇率（港币 / 人民币）",
+                help="每 1 元人民币可兑换的港币金额。例如 1.0852 表示 1 元人民币可换 1.0852 港币。",
+                format="%.4f",
+            ),
+            "手续费（港币）": st.column_config.Column(
+                "手续费（港币）",
+                help="从换汇后的港币金额中扣除的固定手续费。",
+            ),
+            "预计到账（港币）": st.column_config.NumberColumn(
+                "预计净到账（港币）",
+                help="人民币汇款金额乘以汇率，再扣除港币手续费。结果四舍五入至小数点后两位。",
+                format="%,.2f",
+            ),
+            "模拟有效期（秒）": st.column_config.Column(
+                "模拟有效期（秒）",
+                help="模拟设定的固定时长，单位为秒，只用于展示。",
+            ),
+        },
     )
-    st.table(quote_table)
 
 elif app_mode == "2. 预约前置检查机制 (Pre-order Check)":
     st.header("非交易时段预约与预审 (Pre-order & Pre-flight Check)")
