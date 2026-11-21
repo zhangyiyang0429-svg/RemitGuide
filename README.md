@@ -29,7 +29,7 @@ Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Ko
 
 Select the funding account independently of the quote provider and recipient. Bookings reserve the total including fees; manual-review requests reserve nothing. At opening the reservation converts to a debit. A refund restores the actual amount to the balance; daily turnover remains used. Each demo link represents one business day. Rewinding leaves usage intact; confirming Clear Records restores the opening values. Older records without a funding account are attributed to the first account.
 
-Type a 24-hour HH:MM value in the sidebar and confirm it. 23:00–06:59 is booking and hourly pricing; 07:00–07:04 shows submitted payments; 07:05–10:59 shows bank receipts; 11:00–22:59 shows refunds. Try 23:30, 07:03, 09:15 and 15:00. The chart at the bottom of the sidebar shows all three simulated HKD-per-CNY rate series in overnight order.
+Type a 24-hour HH:MM value in the sidebar and confirm it. 23:00–06:59 is booking and hourly pricing; 07:00–07:04 shows submitted payments; 07:05–10:59 shows bank receipts; 11:00–22:59 shows refunds. Try 23:30, 07:03, 09:15 and 15:00. The chart at the bottom of the sidebar shows one simulated official reference rate (HKD per CNY) in overnight order. All three bank quotes exceed this benchmark at each hour; compare them on the review screen.
 
 ## Valid recipients
 

@@ -15,8 +15,9 @@ import streamlit as st
 D = Decimal
 BANKS = ("海湾银行", "明港银行", "远洋银行")
 HOURS = ("23:00",) + tuple(f"{h:02}:00" for h in range(8))
-BASE = tuple(map(D, ("1.0800", "1.0780", "1.0820", "1.0850", "1.0830",
-                    "1.0810", "1.0770", "1.0790", "1.0750")))
+# 教学用官方参考值；模拟银行在同一时点加上各自的报价差额。
+REFERENCE = tuple(map(D, ("1.0780", "1.0760", "1.0800", "1.0830", "1.0810",
+                          "1.0790", "1.0750", "1.0770", "1.0730")))
 NORMAL = "正常"
 # 演示备注：全部资料均为虚构。按所选收款路径核对登记号码、户名和银行；
 # 付款人地址与模拟客户档案比对。回执取自匹配账户的模拟银行脚本。
@@ -61,7 +62,7 @@ def quote(bank, hour, budget, currency):
     i = BANKS.index(bank)
     amount = money(budget)
     fee = (D("10"), money(max(D("2"), amount * D(".0015"))), D("18"))[i]
-    rate = BASE[hour] + (D("0"), D("-.0012"), D(".0020"))[i] if currency == "HKD" else D("1")
+    rate = REFERENCE[hour] + (D(".0020"), D(".0008"), D(".0040"))[i] if currency == "HKD" else D("1")
     net = money(max(D("0"), amount - fee) * rate)
     key = f"{bank}|{hour}|{amount}|{currency}|{rate}|{fee}"
     return dict(bank=bank, hour=hour, total=str(amount), fee=str(money(fee)),
@@ -508,13 +509,15 @@ def main():
             if st.sidebar.button(title):
                 st.session_state.page = title
     with st.sidebar:
-        st.caption("模拟汇率曲线 · 每 1 CNY 可兑换的 HKD")
-        points = pd.DataFrame([dict(时间=label, 银行=bank, 汇率=float(quote(bank, i, 5000, "HKD")["rate"]))
-                               for bank in BANKS for i, label in enumerate(HOURS)])
-        chart = alt.Chart(points).mark_line(point=True).encode(
-            x=alt.X("时间:O", sort=list(HOURS)), y=alt.Y("汇率:Q", scale=alt.Scale(zero=False)),
-            color=alt.Color("银行:N", legend=alt.Legend(orient="bottom")),
-            tooltip=["时间", "银行", alt.Tooltip("汇率:Q", format=".4f")])
+        st.markdown("**官方参考汇率（模拟）**")
+        st.caption("1 元人民币可兑换的港元数 · 香港时间")
+        points = pd.DataFrame({"时间": HOURS, "参考汇率": [float(rate) for rate in REFERENCE]})
+        chart = alt.Chart(points).mark_line(color="#176BA0", strokeWidth=2.5, point=True).encode(
+            x=alt.X("时间:O", sort=list(HOURS), title=None,
+                    axis=alt.Axis(values=list(HOURS[::2]), labelAngle=0)),
+            y=alt.Y("参考汇率:Q", title=None, scale=alt.Scale(zero=False),
+                    axis=alt.Axis(format=".3f", tickCount=4)),
+            tooltip=["时间", alt.Tooltip("参考汇率:Q", format=".4f")])
         st.altair_chart(chart)
     if step:
         advanced = orders(owner, step)
