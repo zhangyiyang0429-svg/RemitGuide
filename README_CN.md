@@ -1,7 +1,5 @@
 # RemitGuide 演示使用手册
 
-课堂演示使用虚构账户。每次只改一项，观察提示后还原，再演下一项。
-
 ## 1　启动与重置
 
 在 feat/remittance-flow 分支的 Codespaces 终端运行以下命令。如果旧服务占用端口，先在其终端按 Ctrl+C。打开「端口」中的 8501。
@@ -29,7 +27,7 @@ Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Ko
 
 ### 英文姓名和收款人证件 · Identity check
 
-| 中文备注 | 英文登记姓名 | 证件类型 | 虚构号码 |
+| 中文备注 | 英文登记姓名 | 证件类型 | Mock号码 |
 | --- | --- | --- | --- |
 | 张三 | ZHANGSAN | 中国大陆居民身份证 | 110101199001010015 |
 | 陈大文 | CHENDAIWEN | 香港居民身份证 | A123456(3) |
