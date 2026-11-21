@@ -19,11 +19,14 @@ NORMAL = "正常"
 # 演示备注：全部资料均为虚构。按所选收款路径核对登记号码、户名和银行；
 # 付款人地址与模拟客户档案比对。回执取自匹配账户的模拟银行脚本。
 RECIPIENTS = (
-    dict(name="林安", bank="中大银行", account="1000000001", phone="90000001",
+    dict(name="ZHANGSAN", style="pinyin", document="中国大陆居民身份证", sample_id="110101199001010015",
+         bank="中大银行", account="1000000001", phone="90000001",
          currencies=("HKD", "CNY"), outcome="即时到账"),
-    dict(name="周宁", bank="香港银行", account="2000000002", phone="90000002",
+    dict(name="CHENDAIWEN", style="pinyin", document="香港居民身份证", sample_id="A123456(3)",
+         bank="香港银行", account="2000000002", phone="90000002",
          currencies=("CNY",), outcome="延迟回执"),
-    dict(name="陈乐", bank="香港银行", account="2000000003", phone="90000003",
+    dict(name="Kevin James", style="english", document="护照", sample_id="P00000001",
+         bank="香港银行", account="2000000003", phone="90000003",
          currencies=("HKD", "CNY"), outcome="即时到账", receipt_limit=D("10000")),
 )
 PAYER_ADDRESS = "Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong"
@@ -103,9 +106,26 @@ def verify_recipient(data, q):
     recipient = next((r for r in RECIPIENTS if r[key] == data["number"]), None)
     if mobile and recipient is None:
         return check(data, q, "手机号未登记"), None
-    if (recipient is None or recipient["name"] != data["name"].strip()
-            or (not mobile and recipient["bank"] != data["bank"])):
+    if recipient is None or (not mobile and recipient["bank"] != data["bank"]):
         return check(data, q, "收款资料无法核实"), None
+    name = data["name"]
+    if recipient["style"] == "pinyin":
+        if not re.fullmatch("[A-Z]+", name):
+            return ("待修正", "请使用英文拼音：需要全部大写并无空格。"), None
+        matches = name == recipient["name"]
+    else:
+        matches = " ".join(name.split()).casefold() == recipient["name"].casefold()
+    if not matches:
+        hint = "需要全部大写并无空格。" if recipient["style"] == "pinyin" else "请核对英文姓名拼写。"
+        return ("待修正", "收款人英文姓名与登记资料不匹配。" + hint), None
+    if data["document"] != recipient["document"]:
+        return ("待修正", "证件类型与该收款人的演示档案不匹配。"), None
+    patterns = {"中国大陆居民身份证": r"[0-9]{17}[0-9X]", "香港居民身份证": r"[A-Z]{1,2}[0-9]{6}\([0-9A]\)", "护照": r"[A-Z][A-Z0-9]{8}"}
+    number = data["sample_id"].strip().upper()
+    if not re.fullmatch(patterns[data["document"]], number):
+        return ("待修正", "请检查证件号码格式，参照使用手册中的虚构示例。"), None
+    if number != recipient["sample_id"]:
+        return ("待修正", "证件号码与收款人的演示档案不匹配。"), None
     if q["currency"] not in recipient["currencies"]:
         return check(data, q, "收款币种不支持"), None
     error = address_error(data["address"])
@@ -290,13 +310,15 @@ def payment(owner, clock):
         st.error(error)
     method = st.radio("收款方式", ("银行账户", "香港手机号"), horizontal=True)
     recipient_bank = st.selectbox("香港收款银行", ("中大银行", "香港银行")) if method == "银行账户" else ""
-    name = st.text_input("收款人登记姓名（仅用虚构资料）", RECIPIENTS[0]["name"])
+    name = st.text_input("收款人英文登记姓名", RECIPIENTS[0]["name"])
+    document = st.selectbox("收款人证件类型", [r["document"] for r in RECIPIENTS])
+    sample_id = st.text_input("收款人证件号码（仅输入手册中的虚构号码）", RECIPIENTS[0]["sample_id"])
     number = st.text_input("收款账号" if recipient_bank else "香港手机号（+852）",
                            RECIPIENTS[0]["account"] if recipient_bank else RECIPIENTS[0]["phone"], key="number_"+method)
     budget = st.number_input("付款总额 · CNY（含手续费）", 0.01, 1000000.0, 5000.0, step=100.0)
     currency = st.selectbox("收款币种", ("HKD", "CNY"))
-    data = dict(name=name, method=method, number=number, bank=recipient_bank, address=address)
-    fingerprint = (bank, method, recipient_bank, name, number, budget, currency, address)
+    data = dict(name=name, method=method, number=number, bank=recipient_bank, address=address, document=document, sample_id=sample_id)
+    fingerprint = (bank, method, recipient_bank, name, number, budget, currency, address, document, sample_id)
     if st.button("下一步 · 核对汇款", type="primary", disabled=bool(error)):
         st.session_state.review = fingerprint
         st.session_state.quote_hour = hour

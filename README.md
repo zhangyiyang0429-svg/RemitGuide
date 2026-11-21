@@ -1,62 +1,68 @@
-# RemitGuide
+# RemitGuide demo manual
 
-## 1　启动与重置
+[Chinese manual](README_CN.md)
 
-在 feat/remittance-flow 分支的 Codespaces 终端运行以下命令。如果旧服务占用端口，先在其终端按 Ctrl+C。打开「端口」中的 8501。
+RemitGuide simulates a personal remittance from mainland China to Hong Kong. Use only the fictional profiles below. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
 
-```
+## Start the demo
+
+In Codespaces on branch `feat/remittance-flow`, stop any previous server with Ctrl+C, then run:
+
+```bash
 git pull --ff-only origin feat/remittance-flow
 python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-重新演示时，点左栏「清空记录」。「取消」保留全部订单，「确定清空」删除当前演示链接下的记录。重新开始时再把时钟拖回 23:00。
+Open port 8501 in your browser. The application interface is in Simplified Chinese. The default paying bank is Bay Bank, the first option. The other two options are Minggang Bank and Ocean Bank. All three use this payer address:
 
-## 2　正确资料
-
-默认付款行为海湾银行；也可选择明港银行、远洋银行。三家使用同一虚构付款人的登记地址。复制下列整行，保留英文标点和空格。
-
-```
+```text
 Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong
 ```
 
-| 收款人 | 收款行 | 账号 | 香港手机号 | 币种与结果 |
-| --- | --- | --- | --- | --- |
-| 林安 | 中大银行 | 1000000001 | 90000001 | HKD / CNY，07:00 到账 |
-| 周宁 | 香港银行 | 2000000002 | 90000002 | CNY，07:05 到账 |
-| 陈乐 | 香港银行 | 2000000003 | 90000003 | HKD / CNY，付款总额不超过 10,000 CNY 时正常到账 |
+## Valid recipients
 
-银行账户路径填写姓名、收款行和账号；手机号路径填写姓名和八位号码。切换收款人时一并更新相应字段。付款总额默认 5,000 元，已含手续费。
+| Registered English name | Receiving bank | Account | Hong Kong phone | Document type | Fictional document number | Currency |
+| --- | --- | --- | --- | --- | --- | --- |
+| ZHANGSAN | CU Bank (first option) | 1000000001 | 90000001 | Mainland resident ID (first option) | 110101199001010015 | HKD or CNY |
+| CHENDAIWEN | Hong Kong Bank (second option) | 2000000002 | 90000002 | Hong Kong resident ID (second option) | A123456(3) | CNY |
+| Kevin James | Hong Kong Bank (second option) | 2000000003 | 90000003 | Passport (third option) | P00000001 | HKD or CNY |
 
-## 3　用一笔汇款走完整条时间线
+For an account transfer, enter the bank and account number. For a mobile transfer, enter the eight-digit phone number. Both routes require the English name, document type and document number. When switching recipients, update every corresponding field.
 
-1. 在左栏选 02:00，保留默认林安及海湾银行，点击「下一步 · 核对汇款」。可勾选「比较其他可用银行」。
-2. 海湾银行手续费 10.00 元，兑换本金 4,990.00 元，汇率 1.0850，预计实收 5,414.15 港元。点击「确认预约并锁定报价」。
-3. 将左栏时钟拖至 07:00，打开「汇款记录」。林安显示已到账；07:00 参考汇率为 1.0750，实际仍采用 1.0850。
-4. 将时钟调到 07:05，页面自动展示每笔已提交交易的银行回执。周宁此时到账。没有提交交易或只有待复核申请时，显示「无有效订单」。
-5. 11:00 自动进入退汇记录。所有交易都成功、从未提交订单或仅有待复核申请时，显示「无订单」。预检填错后修正，按修正后的资料正常办理。
-6. 演示退汇时，用陈乐的正确资料，选 HKD，将付款总额改为 10,001 CNY。该模拟收款账户在入账时检查单笔 10,000 CNY 的限额。07:05 的回执注明退回原因，11:00 只列出已退汇订单及其费用、汇差和实退金额。对比操作：把付款总额改为 10,000 CNY，重新预约即可正常到账。
+## Run a successful payment
 
-可以直接跳到 11:00，系统会补齐经过的事件。回拨后可演示另一笔夜间预约，已有交易不会重复扣款。07:05 至 11:00 为本演示的回执观察时段。
+1. Set the sidebar clock to 02:00. Keep the default recipient and enter a total payment of CNY 5,000. Review the payment and optionally compare the three banks.
+2. The default bank deducts a CNY 10 fee. At 1.0850 HKD per CNY, the recipient receives HKD 5,414.15. Confirm the booking to lock the rate.
+3. Move the clock to 07:00 to submit the booking. At 07:05, the screen automatically shows receipts for all submitted orders. ZHANGSAN settles immediately and CHENDAIWEN settles at 07:05. With no submitted orders, the screen reports that there are no valid orders.
+4. At 11:00, only returned orders appear. If every payment succeeded, or no orders were submitted, the list is empty. Correcting an input error before booking does not cause a refund.
+5. To demonstrate a return, send CNY 10,001 to Kevin James with HKD as the receiving currency. The receiving bank checks a simulated CNY 10,000 per-payment limit at settlement. The 07:05 receipt explains the return, and the 11:00 receipt shows the fee, FX difference and actual refund. CNY 10,000 is accepted.
 
-## 4　逐项改错演示表
+Skipping directly to 11:00 processes intermediate events. Moving the clock backwards does not debit a settled payment again. To start over, use the sidebar clear-records button. Cancel keeps the records. Confirm deletes only the records for the current demo link. Move the clock back to 23:00 for a new booking.
 
-以下以默认林安资料为起点，注明周宁的行除外。地址编辑后按 Enter 或点出输入框；其余项目改完点「下一步 · 核对汇款」。每条提示对应当前界面能够触发的一类结果。
+## Change one field at a time
 
-| 改动示例 | 可观察的结果 |
+After editing the address, press Enter or leave the field. For other fields, select the review-payment button. Restore the valid field before trying the next example.
+
+| Change | Expected result |
 | --- | --- |
-| 清空登记地址；或将 Chinese Hill 改为「中文山」 | 请检查地址格式；下一步禁用 |
-| 把英文逗号改为中文逗号，去掉逗号后的空格，或加两个空格 | 请检查地址格式 |
-| No.77 改为 No77、No. 77；6F 改为 F6；删去一个地址字段 | 请检查地址格式 |
-| New Territories 改为 Old Territories；Hong Kong 改为 Hong Kang；Sha Tin 改为 Tai Po | 无效地址；地区段须为 Sha Tin, New Territories, Hong Kong |
-| Flat A1 改为 Flat B2，其余相同 | 格式及地区通过，但与付款人留档不同。提示联系付款银行，可保存「银行复核中」，07:00 不提交 |
-| 把收款人姓名清空或仅留空格 | 请填写收款人姓名 |
-| 林安改为林宁；或中大银行改为香港银行；或账号末位 1 改为 9 | 收款资料未能核实 |
-| 账号改为 1234567（少于八位）、超过十六位、含空格、字母或全角数字 | 提示半角数字和长度要求 |
-| 选香港手机号，把 90000001 改为 9000001、+85290000001 或全角号码 | 手机号须为八位半角数字 |
-| 手机号改为 90000009，保持八位 | 此号码未取得可用收款登记 |
-| 周宁的正确账户资料，收款币种 CNY 改为 HKD | 该收款账户仅支持人民币 |
-| 海湾银行付款总额由 5000 改为 10 或 5 | 付款总额须大于手续费 |
-| 付款总额改为 50000.01 | 超出演示账户可用汇款额度；金额控件本身仅接受 0.01 至 1,000,000 |
-| 在 01:00 打开核对页，确认前把时钟拖至 02:00 | 旧报价过期，显示新旧实收，点击「接受本小时新报价」后才能确认 |
+| Clear the address, use non-English characters, replace an English comma, omit its following space, add a second space, use No77 or F6, or remove a component | Address format error; review is disabled |
+| Change New Territories to Old Territories, Hong Kong to Hong Kang, or Sha Tin to Tai Po | Invalid address region |
+| Change Flat A1 to Flat B2 only | Valid format but different payer record; manual review, no submission at opening |
+| Clear the name | Name required |
+| Enter ZhangSan, ZHANG SAN, Chinese characters, or CHEN DAIWEN for the corresponding pinyin recipient | Use uppercase English letters with no spaces |
+| Change ZHANGSAN to ZHANGSI | Registered name mismatch |
+| Enter kevin  james for Kevin James | Accepted despite case and spacing differences |
+| Change Kevin James to Kevin Jones | Check English name spelling |
+| Choose passport for ZHANGSAN | Document type mismatch |
+| Clear the document number, shorten the mainland ID, remove the Hong Kong ID parentheses, or shorten the passport | Check document format |
+| Change one digit while preserving the format | Document number does not match the recipient |
+| Change the receiving bank or the last digit of the default account | Recipient details cannot be verified |
+| Use fewer than 8 or more than 16 account digits, full-width digits, spaces or letters | Account format error |
+| Enter a seven-digit phone, a country prefix, or full-width digits | Phone must contain eight ASCII digits |
+| Change the mobile number to 90000009 | No registered mobile payment route |
+| Select HKD for CHENDAIWEN | Only CNY supported |
+| Set the default bank payment to CNY 10 or less | Payment must exceed the fee |
+| Enter CNY 50,000.01 | Demo payment limit exceeded; the input control accepts 0.01 to 1,000,000 |
+| Review at 01:00, then move the clock to 02:00 before confirming | Quote expired; compare and accept the refreshed quote |
 
-地区按大小写精确匹配；若同时破坏标点并改动地区，先显示格式提示。该地址模板和额度是本项目的教学设定。三位收款人的到账、延迟和退汇路径由模拟银行预设。
+The address region is case-sensitive. A punctuation error is reported before a region mismatch. Document formats, receiving limits and rates are teaching assumptions.
