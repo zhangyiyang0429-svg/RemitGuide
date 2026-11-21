@@ -2,7 +2,7 @@
 
 [Chinese manual](README_CN.md)
 
-RemitGuide simulates a personal remittance from mainland China to Hong Kong. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
+RemitGuide simulates a personal remittance from mainland China to Hong Kong. Use only the fictional profiles below. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
 
 ## Start the demo
 
@@ -30,7 +30,7 @@ Open port 8501 in your browser. The application interface is in Simplified Chine
 | Chen Daiwen (second) | 32,000 | 15,000 | 20,000 |
 | Kevin James (third) | 45,000 | 25,000 | 35,000 |
 
-Select the funding account independently of the quote provider and recipient. Bookings reserve the total including fees; manual-review requests reserve nothing. At opening the reservation converts to a debit. A refund restores the actual amount to the balance; daily turnover remains used. Each demo link represents one business day. Rewinding leaves usage intact; confirming Clear Records restores the opening values. Older records without a funding account are attributed to the first account.
+Select the funding account independently of the quote provider. Bookings reserve the total including fees; manual-review requests reserve nothing. At opening the reservation converts to a debit. A refund restores the actual amount to the balance; daily turnover remains used. Each demo link represents one business day. Rewinding leaves usage intact; confirming Clear Records restores the opening values. Older records without a funding account are attributed to the first account.
 
 Type a 24-hour HH:MM value in the sidebar and confirm it. 23:00–06:59 is booking and hourly pricing; 07:00–07:04 shows submitted payments; 07:05–10:59 shows bank receipts; 11:00–22:59 keeps receipts visible and appends the refund list. Try 23:30, 07:03, 09:15 and 15:00. The chart at the bottom of the sidebar shows one simulated official reference rate (HKD per CNY) in overnight order. All three bank quotes exceed this benchmark at each hour; compare them on the review screen.
 
@@ -44,7 +44,7 @@ Type a 24-hour HH:MM value in the sidebar and confirm it. 23:00–06:59 is booki
 
 Simulated receiving fees are CNY 0 at CU Bank and CNY 5 at Hong Kong Bank, added to the sending fee before conversion. The mobile route has no receiving surcharge. Zhang San and Kevin use the listed demo number at either bank. Selecting CU Bank for Chen opens an account-not-found dialog and blocks booking.
 
-For an account transfer, enter the bank and account number. For a mobile transfer, enter the eight-digit phone number. Both routes require the English name, document type and document number. When switching recipients, update every corresponding field.
+For an account transfer, enter the bank and account number. For a mobile transfer, enter the eight-digit phone number. Both routes require the English name, document type and document number. Switching the payer loads their own receiving details.
 
 ## Run a successful payment
 
@@ -92,3 +92,7 @@ After editing the address, press Enter or leave the field. For other fields, sel
 | Cancel the clear-records dialog, then repeat and confirm | Cancel preserves records; after confirmation both receipt views are empty |
 
 The address region is case-sensitive. A punctuation error is reported before a region mismatch. Document formats, receiving limits and rates are teaching assumptions.
+
+## Same-name transfer and refund receipts
+
+Selecting Chen loads his registered name, Hong Kong Bank, HKID and account. Replacing the entire set with Zhang’s data fails verification. Pending returns and completed returns show zero credited to the recipient. The simulation retains original fees and uses an illustrative return rate 0.0060 HKD per CNY above the booking rate for the HKD exchange-loss scenario. CNY returns have no FX difference.
