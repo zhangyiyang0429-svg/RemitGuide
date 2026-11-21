@@ -20,14 +20,11 @@ NORMAL = "正常"
 # 付款人地址与模拟客户档案比对。回执取自匹配账户的模拟银行脚本。
 RECIPIENTS = (
     dict(name="ZHANGSAN", style="pinyin", document="中国大陆居民身份证", sample_id="110101199001010015",
-         bank="中大银行", account="1000000001", phone="90000001",
-         currencies=("HKD", "CNY"), outcome="即时到账"),
+         bank="中大银行", account="1000000001", phone="90000001"),
     dict(name="CHENDAIWEN", style="pinyin", document="香港居民身份证", sample_id="A123456(3)",
-         bank="香港银行", account="2000000002", phone="90000002",
-         currencies=("CNY",), outcome="延迟回执"),
+         bank="香港银行", account="2000000002", phone="90000002"),
     dict(name="Kevin James", style="english", document="护照", sample_id="P00000001",
-         bank="香港银行", account="2000000003", phone="90000003",
-         currencies=("HKD", "CNY"), outcome="即时到账", receipt_limit=D("10000")),
+         bank="香港银行", account="2000000003", phone="90000003"),
 )
 PAYER_ADDRESS = "Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong"
 CLOCK = HOURS + ("07:05", "08:00", "09:00", "10:00", "11:00")
@@ -126,8 +123,6 @@ def verify_recipient(data, q):
         return ("待修正", "请检查证件号码格式，参照使用手册中的虚构示例。"), None
     if number != recipient["sample_id"]:
         return ("待修正", "证件号码与收款人的演示档案不匹配。"), None
-    if q["currency"] not in recipient["currencies"]:
-        return check(data, q, "收款币种不支持"), None
     error = address_error(data["address"])
     if error:
         return ("待修正", error), None
@@ -211,10 +206,28 @@ def orders(owner, step=None, only=None):
         result = [json.loads(row[0]) for row in rows]
         for order in result:
             if step is not None and (only is None or only == order["id"]):
+                # 旧版尚未执行的预约也使用统一时间线；已产生的银行流水保留。
+                if order["state"] == "已预约" and order["step"] == 0:
+                    order["outcome"] = "延迟回执"
+                    order.pop("return_reason", None)
                 advance(order, step)
                 con.execute("UPDATE orders SET body=? WHERE owner=? AND id=?",
                             (json.dumps(order, ensure_ascii=False), owner, order["id"]))
         return result
+
+
+def suspend_credit(owner, ident):
+    """在银行回执到达前，将暂停入账通知关联到这一笔已提交订单。"""
+    with connect() as con:
+        con.execute("BEGIN IMMEDIATE")
+        row = con.execute("SELECT body FROM orders WHERE owner=? AND id=?", (owner, ident)).fetchone()
+        if row:
+            order = json.loads(row[0])
+            if order["state"] == "确认中" and order["step"] == 1:
+                order["outcome"] = "退汇·含汇差"
+                order["return_reason"] = "收款行通知：提交后账户暂停入账，原路退回。"
+                con.execute("UPDATE orders SET body=? WHERE owner=? AND id=?",
+                            (json.dumps(order, ensure_ascii=False), owner, ident))
 
 
 def inputs():
@@ -357,10 +370,7 @@ def payment(owner, clock):
         return
     label = "保存待处理申请" if decision[0] != "已通过" else ("确认汇款" if hour == 8 else "确认预约并锁定报价")
     if st.button(label, type="primary"):
-        o = reserve(q, decision, recipient["outcome"] if recipient else None)
-        if recipient and "receipt_limit" in recipient and D(q["total"]) > recipient["receipt_limit"]:
-            o["outcome"] = "退汇·含汇差"
-            o["return_reason"] = "收款行入账时核验：本笔付款总额超过该模拟账户的单笔入账限额 10,000 CNY。"
+        o = reserve(q, decision, "延迟回执")
         o["parent"] = st.session_state.pop("retry_parent", None)
         if hour == 8:
             advance(o, 1)
@@ -380,6 +390,13 @@ def history(owner):
     ident = st.selectbox("选择订单", list(by_id), format_func=lambda k: k+" · "+by_id[k]["state"])
     o = by_id[ident]
     show_receipt(o)
+    if o["state"] == "确认中" and o["step"] == 1:
+        with st.expander("模拟收款行通知"):
+            if o.get("return_reason"):
+                st.info(o["return_reason"])
+            elif st.button("通知此笔交易暂停入账"):
+                suspend_credit(owner, ident)
+                st.rerun()
     if o["state"] in ("确认中", "退款在途"):
         st.info("请查询原交易；该笔付款已扣款。查询只读取银行的最新回执。")
         if st.button("查询原交易"):
