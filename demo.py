@@ -24,7 +24,7 @@ RECIPIENTS = (
     dict(name="周宁", bank="香港银行", account="2000000002", phone="90000002",
          currencies=("CNY",), outcome="延迟回执"),
     dict(name="陈乐", bank="香港银行", account="2000000003", phone="90000003",
-         currencies=("HKD", "CNY"), outcome="退汇·含汇差"),
+         currencies=("HKD", "CNY"), outcome="即时到账", receipt_limit=D("10000")),
 )
 PAYER_ADDRESS = "Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong"
 CLOCK = HOURS + ("07:05", "08:00", "09:00", "10:00", "11:00")
@@ -156,7 +156,7 @@ def advance(o, step):
         if o["outcome"] == "延迟回执":
             event(o, "07:05", "已到账", "原交易收到收款行入账回执。")
         else:
-            event(o, "07:05", "退款在途", "收款行退回，等待退款入账。")
+            event(o, "07:05", "退款在途", o.get("return_reason", "收款行退回，等待退款入账。"))
     if step >= 3 and o["step"] < 3 and o["state"] == "退款在途":
         principal = D(q["total"]) - D(q["fee"])
         rate = D(q["rate"])
@@ -336,6 +336,9 @@ def payment(owner, clock):
     label = "保存待处理申请" if decision[0] != "已通过" else ("确认汇款" if hour == 8 else "确认预约并锁定报价")
     if st.button(label, type="primary"):
         o = reserve(q, decision, recipient["outcome"] if recipient else None)
+        if recipient and "receipt_limit" in recipient and D(q["total"]) > recipient["receipt_limit"]:
+            o["outcome"] = "退汇·含汇差"
+            o["return_reason"] = "收款行入账时核验：本笔付款总额超过该模拟账户的单笔入账限额 10,000 CNY。"
         o["parent"] = st.session_state.pop("retry_parent", None)
         if hour == 8:
             advance(o, 1)
@@ -401,9 +404,19 @@ def main():
     # 跨过节点时补齐事件。回拨只影响新报价，已经发生的扣款和退款不会撤销。
     step = 3 if CLOCK[clock] == "11:00" else 2 if clock > 8 else 1 if clock == 8 else 0
     if step:
-        orders(owner, step)
+        advanced = orders(owner, step)
     if st.sidebar.button("清空记录"):
         confirm_clear(owner)
+    if clock > 8:
+        refunds = CLOCK[clock] == "11:00"
+        st.header("11:00 退汇记录" if refunds else "银行回执")
+        visible = [o for o in advanced if o["sent"] and (not refunds or o["state"] == "已退汇")]
+        if not visible:
+            st.info("无订单" if refunds else "无有效订单")
+        for o in visible:
+            with st.expander("订单 " + o["id"] + " · " + o["state"], expanded=True):
+                show_receipt(o)
+        return
     for title in ("向香港汇款", "汇款记录"):
         if st.sidebar.button(title):
             st.session_state.page = title
