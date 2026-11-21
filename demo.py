@@ -1,4 +1,3 @@
-"""RemitGuide · 南向汇款教学模拟。启动：streamlit run demo.py"""
 import hashlib
 import json
 import os
@@ -19,8 +18,6 @@ HOURS = ("23:00",) + tuple(f"{h:02}:00" for h in range(8))
 REFERENCE = tuple(map(D, ("1.0780", "1.0760", "1.0800", "1.0830", "1.0810",
                           "1.0790", "1.0750", "1.0770", "1.0730")))
 NORMAL = "正常"
-# 演示备注：全部资料均为虚构。按所选收款路径核对登记号码、户名和银行；
-# 付款人地址与模拟客户档案比对。回执取自匹配账户的模拟银行脚本。
 RECIPIENTS = (
     dict(name="ZHANGSAN", style="pinyin", document="中国大陆居民身份证", sample_id="110101199001010015",
          bank="中大银行", account="1000000001", phone="90000001"),
