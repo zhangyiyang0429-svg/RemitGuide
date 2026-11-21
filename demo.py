@@ -1,4 +1,3 @@
-"""RemitGuide · 南向汇款教学模拟。启动：streamlit run demo.py"""
 import hashlib
 import json
 import os
@@ -50,10 +49,10 @@ ADDRESS_PATTERN = re.compile(
 
 def address_error(value):
     if not ADDRESS_PATTERN.fullmatch(value):
-        return "请检查地址格式：使用英文、半角逗号和一个空格，门牌写作 No.77。"
+        return "请检查地址格式：使用英文、半角逗号和一个空格。"
     district = value.rsplit(", ", 3)[1:]
     if not any(district == addr.rsplit(", ", 3)[1:] for addr in PAYER_ADDRESSES.values()):
-        return "无效地址：请核对地区、区域与 Hong Kong 的组合。"
+        return "无效地址：请核对地区、区域。"
     return None
 
 DB = Path(os.getenv("REMITGUIDE_DB", str(Path.home() / ".remitguide" / "demo.sqlite3")))
@@ -174,7 +173,7 @@ def advance(o, step):
             event(o, "07:00", "未提交", "执行前余额不足，未扣款。")
         else:
             o["sent"] = 1
-            event(o, "07:00", "已提交", "已发送至模拟银行。")
+            event(o, "07:00", "已提交", "已发送至银行。")
             if o["decision"][0] != "已通过" or o["outcome"] == "银行拒绝":
                 event(o, "07:00", "已拒绝", "银行拒绝本次交易，未扣款。")
             else:
