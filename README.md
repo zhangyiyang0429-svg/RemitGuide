@@ -17,9 +17,9 @@ Open port 8501 in your browser. The application interface is in Simplified Chine
 
 | Payer | Registered address |
 | --- | --- |
-| Zhang San | Flat B2, 8F, Cedar Court, No.18 Maple Lane, Sha Tin, New Territories, Hong Kong |
+| Zhang San | Flat B2, 8F, Cedar Court, No.18 Maple Lane, Mong Kok, Kowloon, Hong Kong |
 | Chen Daiwen | Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong |
-| Kevin James | Flat C3, 12F, Willow House, No.32 Laurel Road, Sha Tin, New Territories, Hong Kong |
+| Kevin James | Flat C3, 12F, Willow House, No.32 Laurel Road, Wan Chai, Hong Kong Island, Hong Kong |
 
 
 ## Funding accounts and clock
@@ -38,9 +38,11 @@ Type a 24-hour HH:MM value in the sidebar and confirm it. 23:00–06:59 is booki
 
 | Registered English name | Receiving bank | Account | Hong Kong phone | Document type | Fictional document number |
 | --- | --- | --- | --- | --- | --- |
-| ZHANGSAN | CU Bank (first option) | 1000000001 | 90000001 | Mainland resident ID (first option) | 110101199001010015 |
+| ZHANGSAN | Either bank | 1000000001 | 90000001 | Mainland resident ID (first option) | 110101199001010015 |
 | CHENDAIWEN | Hong Kong Bank (second option) | 2000000002 | 90000002 | Hong Kong resident ID (second option) | A123456(3) |
-| Kevin James | Hong Kong Bank (second option) | 2000000003 | 90000003 | Passport (third option) | P00000001 |
+| Kevin James | Either bank | 2000000003 | 90000003 | Passport (third option) | P00000001 |
+
+Simulated receiving fees are CNY 0 at CU Bank and CNY 5 at Hong Kong Bank, added to the sending fee before conversion. The mobile route has no receiving surcharge. Zhang San and Kevin use the listed demo number at either bank. Selecting CU Bank for Chen opens an account-not-found dialog and blocks booking.
 
 For an account transfer, enter the bank and account number. For a mobile transfer, enter the eight-digit phone number. Both routes require the English name, document type and document number. When switching recipients, update every corresponding field.
 
@@ -71,7 +73,7 @@ After editing the address, press Enter or leave the field. For other fields, sel
 | Choose passport for ZHANGSAN | Document type mismatch |
 | Clear the document number, shorten the mainland ID, remove the Hong Kong ID parentheses, or shorten the passport | Check document format |
 | Change one digit while preserving the format | Document number does not match the recipient |
-| Change the receiving bank or the last digit of the default account | Recipient details cannot be verified |
+| Change the last digit of the default account | Recipient details cannot be verified |
 | Use fewer than 8 or more than 16 account digits, full-width digits, spaces or letters | Account format error |
 | Enter a seven-digit phone, a country prefix, or full-width digits | Phone must contain eight ASCII digits |
 | Change the mobile number to 90000009 | No registered mobile payment route |

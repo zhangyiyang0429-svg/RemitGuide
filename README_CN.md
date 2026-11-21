@@ -33,16 +33,16 @@ python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 
 | 付款人 | 登记地址 |
 | --- | --- |
-| 张三 | Flat B2, 8F, Cedar Court, No.18 Maple Lane, Sha Tin, New Territories, Hong Kong |
+| 张三 | Flat B2, 8F, Cedar Court, No.18 Maple Lane, Mong Kok, Kowloon, Hong Kong |
 | 陈大文 | Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong |
-| Kevin James | Flat C3, 12F, Willow House, No.32 Laurel Road, Sha Tin, New Territories, Hong Kong |
+| Kevin James | Flat C3, 12F, Willow House, No.32 Laurel Road, Wan Chai, Hong Kong Island, Hong Kong |
 
 
 | 收款人 | 收款行 | 账号 | 香港手机号 |
 | --- | --- | --- | --- |
-| ZHANGSAN | 中大银行 | 1000000001 | 90000001 |
+| ZHANGSAN | 两家均可 | 1000000001 | 90000001 |
 | CHENDAIWEN | 香港银行 | 2000000002 | 90000002 |
-| Kevin James | 香港银行 | 2000000003 | 90000003 |
+| Kevin James | 两家均可 | 2000000003 | 90000003 |
 
 ### 英文姓名和收款人证件 · Identity check
 
@@ -53,6 +53,8 @@ python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 | 英文姓名 | Kevin James | 护照 | P00000001 |
 
 仅使用上述虚构资料。该步骤核对示例格式及本地档案，不连接政府身份核验服务。两种收款方式都须填写证件。订单回执不存储完整证件号。
+
+模拟收款手续费：中大银行 0 元，香港银行 5 元，手机号路径不加收。手续费合计从付款总额中扣除后再兑换。张三与 Kevin 在两家银行复用表中演示账号。
 
 银行账户路径填写姓名、收款行和账号；手机号路径填写姓名和八位号码。切换收款人时一并更新相应字段。付款总额默认 5,000 元，已含手续费。
 
@@ -76,10 +78,11 @@ python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 | 清空登记地址；或将 Chinese Hill 改为「中文山」 | 请检查地址格式；下一步禁用 |
 | 把英文逗号改为中文逗号，去掉逗号后的空格，或加两个空格 | 请检查地址格式 |
 | No.77 改为 No77、No. 77；6F 改为 F6；删去一个地址字段 | 请检查地址格式 |
-| New Territories 改为 Old Territories；Hong Kong 改为 Hong Kang；Sha Tin 改为 Tai Po | 无效地址；地区段须为 Sha Tin, New Territories, Hong Kong |
+| New Territories 改为 Old Territories；Hong Kong 改为 Hong Kang；Sha Tin 改为 Tai Po | 无效地址；请核对地区和区域组合 |
 | Flat A1 改为 Flat B2，其余相同 | 格式及地区通过，但与付款人留档不同。提示联系付款银行，可保存「银行复核中」，07:00 不提交 |
 | 把收款人姓名清空或仅留空格 | 请填写收款人姓名 |
-| 中大银行改为香港银行；或账号末位 1 改为 9 | 收款资料未能核实 |
+| 陈大文选中大银行 | 弹窗「未能查到收款账户」，须改选香港银行 |
+| 张三账号末位 1 改为 9 | 收款资料未能核实 |
 | 账号改为 1234567（少于八位）、超过十六位、含空格、字母或全角数字 | 提示半角数字和长度要求 |
 | 选香港手机号，把 90000001 改为 9000001、+85290000001 或全角号码 | 手机号须为八位半角数字 |
 | 手机号改为 90000009，保持八位 | 此号码未取得可用收款登记 |

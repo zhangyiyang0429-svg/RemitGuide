@@ -29,10 +29,11 @@ RECIPIENTS = (
     dict(name="Kevin James", style="english", document="护照", sample_id="P00000001",
          bank="香港银行", account="2000000003", phone="90000003"),
 )
+RECEIVING_FEES = {"中大银行": D("0"), "香港银行": D("5")}
 PAYER_ADDRESSES = {
-    "张三": "Flat B2, 8F, Cedar Court, No.18 Maple Lane, Sha Tin, New Territories, Hong Kong",
+    "张三": "Flat B2, 8F, Cedar Court, No.18 Maple Lane, Mong Kok, Kowloon, Hong Kong",
     "陈大文": "Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong",
-    "Kevin James": "Flat C3, 12F, Willow House, No.32 Laurel Road, Sha Tin, New Territories, Hong Kong",
+    "Kevin James": "Flat C3, 12F, Willow House, No.32 Laurel Road, Wan Chai, Hong Kong Island, Hong Kong",
 }
 # 付款账户与收款人独立；比价和更换收款人不会改变资金来源。
 ACCOUNTS = {
@@ -50,8 +51,9 @@ ADDRESS_PATTERN = re.compile(
 def address_error(value):
     if not ADDRESS_PATTERN.fullmatch(value):
         return "请检查地址格式：使用英文、半角逗号和一个空格，门牌写作 No.77。"
-    if not value.endswith(", Sha Tin, New Territories, Hong Kong"):
-        return "无效地址：地区须填写 Sha Tin, New Territories, Hong Kong。"
+    district = value.rsplit(", ", 3)[1:]
+    if not any(district == addr.rsplit(", ", 3)[1:] for addr in PAYER_ADDRESSES.values()):
+        return "无效地址：请核对地区、区域与 Hong Kong 的组合。"
     return None
 
 DB = Path(os.getenv("REMITGUIDE_DB", str(Path.home() / ".remitguide" / "demo.sqlite3")))
@@ -61,15 +63,17 @@ def money(value):
     return D(str(value)).quantize(D(".01"), rounding=ROUND_HALF_UP)
 
 
-def quote(bank, hour, budget, currency):
+def quote(bank, hour, budget, currency, receiving_bank=""): 
     bank = {"海湾银行 A": BANKS[0], "明港银行 B": BANKS[1], "远洋银行 C": BANKS[2]}.get(bank, bank)
     i = BANKS.index(bank)
     amount = money(budget)
     fee = (D("10"), money(max(D("2"), amount * D(".0015"))), D("18"))[i]
+    receiving_fee = RECEIVING_FEES[receiving_bank] if receiving_bank else D("0")
+    fee += receiving_fee
     rate = REFERENCE[hour] + (D(".0020"), D(".0008"), D(".0040"))[i] if currency == "HKD" else D("1")
     net = money(max(D("0"), amount - fee) * rate)
     key = f"{bank}|{hour}|{amount}|{currency}|{rate}|{fee}"
-    return dict(bank=bank, hour=hour, total=str(amount), fee=str(money(fee)),
+    return dict(receiving_bank=receiving_bank, receiving_fee=str(money(receiving_fee)), bank=bank, hour=hour, total=str(amount), fee=str(money(fee)),
                 rate=str(rate), net=str(net), currency=currency,
                 ref=hashlib.sha256(key.encode()).hexdigest()[:10].upper())
 
@@ -115,7 +119,9 @@ def verify_recipient(data, q):
     recipient = next((r for r in RECIPIENTS if r[key] == data["number"]), None)
     if mobile and recipient is None:
         return check(data, q, "手机号未登记"), None
-    if recipient is None or (not mobile and recipient["bank"] != data["bank"]):
+    if not mobile and recipient and recipient["name"] == "CHENDAIWEN" and data["bank"] == "中大银行":
+        return ("待修正", "未能查到收款账户"), None
+    if recipient is None:
         return check(data, q, "收款资料无法核实"), None
     name = data["name"]
     if recipient["style"] == "pinyin":
@@ -221,6 +227,14 @@ def limits_message(amount, available):
     labels = ("可用余额不足", "超过单笔转账额度", "超过当日剩余转账额度")
     return "；".join(f"{label}（可用 {money(limit)} CNY）"
                     for label, limit in zip(labels, available) if amount > limit)
+
+
+@st.dialog("收款账户核验")
+def missing_account_dialog():
+    st.error("未能查到收款账户")
+    st.write("陈大文在中大银行没有登记账户，请选择香港银行。")
+    if st.button("返回选择收款行"):
+        st.rerun()
 
 
 @st.dialog("付款账户核验未通过")
@@ -336,6 +350,8 @@ def show_receipt(o):
     st.subheader(o["state"])
     st.caption(f"交易参考编号 {o['id']} · {q['bank']} · 报价 {q['ref']}")
     st.caption("付款账户：" + o.get("payer", "张三"))
+    if q.get("receiving_bank"):
+        st.caption(f"收款行：{q['receiving_bank']} · 收款手续费 {q['receiving_fee']} CNY（已计入总手续费）")
     if o.get("parent"):
         st.caption("关联原交易 " + o["parent"])
     cols = st.columns(3)
@@ -374,19 +390,28 @@ def payment(owner, clock):
     with right.container(border=True):
         st.subheader("收款人资料")
         method = st.radio("收款方式", ("银行账户", "香港手机号"), horizontal=True)
-        recipient_bank = st.selectbox("香港收款银行", ("中大银行", "香港银行")) if method == "银行账户" else ""
+        recipient_bank = st.selectbox("香港收款银行", list(RECEIVING_FEES),
+            format_func=lambda b: f"{b} · 收款手续费 {money(RECEIVING_FEES[b])} CNY") if method == "银行账户" else ""
         name = st.text_input("收款人英文登记姓名", RECIPIENTS[0]["name"])
         document = st.selectbox("收款人证件类型", [r["document"] for r in RECIPIENTS])
         sample_id = st.text_input("收款人证件号码（仅输入手册中的虚构号码）", RECIPIENTS[0]["sample_id"])
         number = st.text_input("收款账号" if recipient_bank else "香港手机号（+852）",
                                RECIPIENTS[0]["account"] if recipient_bank else RECIPIENTS[0]["phone"], key="number_"+method)
+        unavailable = recipient_bank == "中大银行" and (number == RECIPIENTS[1]["account"] or name.strip() == "CHENDAIWEN")
+        if unavailable:
+            st.error("未能查到收款账户")
+            if not st.session_state.get("missing_account"):
+                st.session_state.missing_account = True
+                missing_account_dialog()
+        else:
+            st.session_state.missing_account = False
     with left.container(border=True):
         st.subheader("汇款金额")
         budget = st.number_input("付款总额 · CNY（含手续费）", 0.01, 1000000.0, 5000.0, step=100.0)
         currency = st.selectbox("收款币种", ("HKD", "CNY"))
     data = dict(holder=holder, name=name, method=method, number=number, bank=recipient_bank, address=address, document=document, sample_id=sample_id)
     fingerprint = (holder, bank, method, recipient_bank, name, number, budget, currency, address, document, sample_id)
-    if st.button("下一步 · 核对汇款", type="primary", disabled=bool(error)):
+    if st.button("下一步 · 核对汇款", type="primary", disabled=bool(error) or unavailable):
         problem = limits_message(money(budget), available)
         if problem:
             st.session_state.review = None
@@ -403,17 +428,18 @@ def payment(owner, clock):
     if st.checkbox("比较其他可用银行"):
         st.table([{"付款银行": b, "扣款 CNY": str(money(budget)), "手续费 CNY": r["fee"],
                    "汇率": r["rate"], f"实收 {currency}": r["net"]}
-                  for b in BANKS for r in [quote(b, hour, budget, currency)]])
+                  for b in BANKS for r in [quote(b, hour, budget, currency, recipient_bank)]])
         choice = st.selectbox("选择付款银行", BANKS, index=BANKS.index(bank), key="bank_choice")
-    q = quote(choice, hour, budget, currency)
+    q = quote(choice, hour, budget, currency, recipient_bank)
     st.write(f"**{choice}**　·　{method}尾号 {number[-4:]}")
     cols = st.columns(3)
     cols[0].metric("总扣款 · CNY", q["total"])
     cols[1].metric("手续费 · CNY", q["fee"])
     cols[2].metric(f"预计实收 · {currency}", q["net"])
+    st.caption(f"付款行手续费 {money(D(q['fee'])-D(q['receiving_fee']))} CNY · 收款行手续费 {q['receiving_fee']} CNY")
     st.caption(f"兑换本金 {money(D(q['total'])-D(q['fee']))} CNY × 汇率 {q['rate']}。"
                f"报价 {q['ref']}，本小时有效；确认后保价至本次开窗。")
-    old = quote(choice, st.session_state.quote_hour, budget, currency)
+    old = quote(choice, st.session_state.quote_hour, budget, currency, recipient_bank)
     if quote_changed(old, q):
         st.warning(f"原报价已过期。原预计实收 {old['net']}，新预计实收 {q['net']} {currency}。")
         if st.button("接受本小时新报价"):
