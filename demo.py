@@ -16,10 +16,17 @@ HOURS = ("23:00",) + tuple(f"{h:02}:00" for h in range(8))
 BASE = tuple(map(D, ("1.0800", "1.0780", "1.0820", "1.0850", "1.0830",
                     "1.0810", "1.0770", "1.0790", "1.0750")))
 NORMAL = "正常"
-ISSUES = (NORMAL, "手机号未登记", "收款币种不支持", "证件过期", "地址待核验",
-          "收款资料无法核实", "超过累计额度", "账户受限", "授权失效",
-          "用途资料待补充", "银行风险复核", "登记查询超时")
-OUTCOMES = ("即时到账", "余额变动", "银行拒绝", "延迟回执", "退汇·仅手续费", "退汇·含汇差")
+# 演示备注：全部资料均为虚构。按所选收款路径核对登记号码、户名和银行；
+# 付款人地址与模拟客户档案比对。回执取自匹配账户的模拟银行脚本。
+RECIPIENTS = (
+    dict(name="林安", bank="中大银行", account="1000000001", phone="90000001",
+         currencies=("HKD", "CNY"), outcome="即时到账"),
+    dict(name="周宁", bank="香港银行", account="2000000002", phone="90000002",
+         currencies=("CNY",), outcome="延迟回执"),
+    dict(name="陈乐", bank="香港银行", account="2000000003", phone="90000003",
+         currencies=("HKD", "CNY"), outcome="退汇·含汇差"),
+)
+PAYER_ADDRESS = "演示路18号"
 DB = Path(os.getenv("REMITGUIDE_DB", str(Path.home() / ".remitguide" / "demo.sqlite3")))
 
 
@@ -69,6 +76,25 @@ def check(data, q, issue):
         "登记查询超时": ("待核实", "暂时无法取得核验结果，请稍后重新查询。"),
     }
     return results.get(issue, ("已通过", "自动预检已通过。"))
+
+
+def verify_recipient(data, q):
+    decision = check(data, q, NORMAL)
+    if decision[0] != "已通过":
+        return decision, None
+    mobile = data["method"] == "香港手机号"
+    key = "phone" if mobile else "account"
+    recipient = next((r for r in RECIPIENTS if r[key] == data["number"]), None)
+    if mobile and recipient is None:
+        return check(data, q, "手机号未登记"), None
+    if (recipient is None or recipient["name"] != data["name"].strip()
+            or (not mobile and recipient["bank"] != data["bank"])):
+        return check(data, q, "收款资料无法核实"), None
+    if q["currency"] not in recipient["currencies"]:
+        return check(data, q, "收款币种不支持"), None
+    if data["address"].strip() != PAYER_ADDRESS:
+        return check(data, q, "地址待核验"), None
+    return decision, recipient
 
 
 def event(order, time, state, message):
@@ -233,22 +259,21 @@ def show_receipt(o):
 def payment(owner):
     st.header("向香港汇款")
     st.caption("跨境支付通 · 内地 → 香港　｜　虚构账户和模拟银行报价")
-    with st.expander("演示设置 · 时钟与模拟银行"):
+    with st.expander("演示时钟"):
         hour = st.select_slider("当前香港时间（23:00 至次日 07:00）", options=range(9),
                                 format_func=lambda h: HOURS[h])
-        issue = st.selectbox("银行预检场景", ISSUES)
-        outcome = st.selectbox("执行及回执场景", OUTCOMES)
     st.caption(f"香港时间 {HOURS[hour]}　·　" + ("服务窗口开放" if hour == 8 else "可预约次日 07:00 汇款"))
     bank = st.selectbox("付款账户", BANKS, format_func=lambda b: b + (" · 常用人民币账户" if b == BANKS[0] else " · 人民币账户"))
+    address = st.text_input("付款人登记地址（模拟）", PAYER_ADDRESS)
     method = st.radio("收款方式", ("银行账户", "香港手机号"), horizontal=True)
-    recipient_bank = st.selectbox("香港收款银行", ("演示收款行甲", "演示收款行乙")) if method == "银行账户" else ""
-    name = st.text_input("收款人登记姓名（仅用虚构资料）", "演示客户")
+    recipient_bank = st.selectbox("香港收款银行", ("中大银行", "香港银行")) if method == "银行账户" else ""
+    name = st.text_input("收款人登记姓名（仅用虚构资料）", RECIPIENTS[0]["name"])
     number = st.text_input("收款账号" if recipient_bank else "香港手机号（+852）",
-                           "1234567890" if recipient_bank else "91234567", key="number_"+method)
+                           RECIPIENTS[0]["account"] if recipient_bank else RECIPIENTS[0]["phone"], key="number_"+method)
     budget = st.number_input("付款总额 · CNY（含手续费）", 0.01, 1000000.0, 5000.0, step=100.0)
     currency = st.selectbox("收款币种", ("HKD", "CNY"))
-    data = dict(name=name, method=method, number=number)
-    fingerprint = (bank, method, recipient_bank, name, number, budget, currency)
+    data = dict(name=name, method=method, number=number, bank=recipient_bank, address=address)
+    fingerprint = (bank, method, recipient_bank, name, number, budget, currency, address)
     if st.button("下一步 · 核对汇款", type="primary"):
         st.session_state.review = fingerprint
         st.session_state.quote_hour = hour
@@ -278,7 +303,7 @@ def payment(owner):
             st.session_state.quote_hour = hour
             st.rerun()
         return
-    decision = check(data, q, issue)
+    decision, recipient = verify_recipient(data, q)
     if decision[0] != "已通过":
         st.warning(decision[1])
     else:
@@ -287,7 +312,7 @@ def payment(owner):
         return
     label = "保存待处理申请" if decision[0] != "已通过" else ("确认汇款" if hour == 8 else "确认预约并锁定报价")
     if st.button(label, type="primary"):
-        o = reserve(q, decision, outcome)
+        o = reserve(q, decision, recipient["outcome"] if recipient else None)
         o["parent"] = st.session_state.pop("retry_parent", None)
         if hour == 8:
             advance(o, 1)
@@ -330,35 +355,6 @@ def orders_by_id(owner, ident):
     return next(o for o in orders(owner) if o["id"] == ident)
 
 
-def evidence():
-    st.header("对照实验")
-    st.write("两组共用合成资料、模拟银行规则和回执。对照组在 07:00 直接提交，"
-             "增强组可预检、响应纠错提示并提前锁价。结果仅描述本批合成案例。")
-    if st.button("运行八类场景", type="primary"):
-        st.session_state.results = experiments()
-    rows = st.session_state.get("results", [])
-    if not rows:
-        return
-    for group in ("对照组", "增强组"):
-        group_rows = [r for r in rows if r["组别"] == group]
-        n = len(group_rows)
-        st.subheader(group)
-        a,b,c = st.columns(3)
-        for col, key in zip((a,b,c), ("开窗成功","最终到账","通过")):
-            col.metric(key if key != "通过" else "测试通过", f"{sum(r[key] for r in group_rows)} / {n}")
-        st.caption(f"自动预检直接通过 {sum(r['预检']=='已通过' for r in group_rows)} 笔 · "
-                   f"主动修正 {sum(r['已纠错'] for r in group_rows)} / 1 个指定可纠错案例 · "
-                   f"转人工复核 {sum(r['预检']=='银行复核中' for r in group_rows)} 笔。")
-        for cat in ("报价更新", "退汇"):
-            subset = [r for r in group_rows if r["类型"] == cat]
-            st.caption(f"{cat}案例符合预期：{sum(r['通过'] for r in subset)} / {len(subset)}")
-    st.dataframe([{k:v for k,v in r.items() if k!="事件"} for r in rows], hide_index=True)
-    r = st.selectbox("追溯案例", rows, format_func=lambda r:f"{r['组别']} · {r['案例']} · {r['订单']}")
-    st.table([dict(时间=t,状态=s,说明=m) for t,s,m in r["事件"]])
-    st.download_button("下载本次实验结果", json.dumps(rows, ensure_ascii=False, indent=2),
-                       "remitguide-results.json", "application/json")
-
-
 def main():
     st.set_page_config(page_title="RemitGuide · 跨境汇款", page_icon="💱")
     owner = st.query_params.get("demo", "")
@@ -368,7 +364,7 @@ def main():
     st.session_state.setdefault("page", "向香港汇款")
     st.sidebar.title("RemitGuide")
     st.sidebar.caption("个人银行 · 教学模拟")
-    for title in ("向香港汇款", "汇款记录", "对照实验"):
+    for title in ("向香港汇款", "汇款记录"):
         if st.sidebar.button(title):
             st.session_state.page = title
     if st.session_state.page == "向香港汇款":
@@ -376,7 +372,8 @@ def main():
     elif st.session_state.page == "汇款记录":
         history(owner)
     else:
-        evidence()
+        st.session_state.page = "向香港汇款"
+        payment(owner)
 
 
 if __name__ == "__main__":
