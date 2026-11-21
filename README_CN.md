@@ -9,7 +9,7 @@ git pull --ff-only origin feat/remittance-flow
 python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-重新演示时，点左栏「清空记录」。「取消」保留全部订单，「确定清空」删除当前演示链接下的记录。重新开始时再把时钟拖回 23:00。
+重新演示时，点左栏“清空记录”。“确定清空”删除当前演示链接下的记录。重新开始时再把时钟拖回23:00。
 
 ## 2　正确资料 · Recipient details
 
