@@ -11,7 +11,7 @@ from pathlib import Path
 import streamlit as st
 
 D = Decimal
-BANKS = ("海湾银行 A", "明港银行 B", "远洋银行 C")
+BANKS = ("海湾银行", "明港银行", "远洋银行")
 HOURS = ("23:00",) + tuple(f"{h:02}:00" for h in range(8))
 BASE = tuple(map(D, ("1.0800", "1.0780", "1.0820", "1.0850", "1.0830",
                     "1.0810", "1.0770", "1.0790", "1.0750")))
@@ -26,7 +26,22 @@ RECIPIENTS = (
     dict(name="陈乐", bank="香港银行", account="2000000003", phone="90000003",
          currencies=("HKD", "CNY"), outcome="退汇·含汇差"),
 )
-PAYER_ADDRESS = "演示路18号"
+PAYER_ADDRESS = "Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong"
+CLOCK = HOURS + ("07:05", "08:00", "09:00", "10:00", "11:00")
+# 教学地址模板：先检查英文和标点，再核对固定地区段。
+WORDS = r"[A-Za-z]+(?: [A-Za-z]+)*"
+ADDRESS_PATTERN = re.compile(
+    rf"Flat [A-Za-z0-9]+, [0-9]+F, {WORDS}, No\.[0-9]+ {WORDS}, {WORDS}, {WORDS}, {WORDS}"
+)
+
+
+def address_error(value):
+    if not ADDRESS_PATTERN.fullmatch(value):
+        return "请检查地址格式：使用英文、半角逗号和一个空格，门牌写作 No.77。"
+    if not value.endswith(", Sha Tin, New Territories, Hong Kong"):
+        return "无效地址：地区须填写 Sha Tin, New Territories, Hong Kong。"
+    return None
+
 DB = Path(os.getenv("REMITGUIDE_DB", str(Path.home() / ".remitguide" / "demo.sqlite3")))
 
 
@@ -35,6 +50,7 @@ def money(value):
 
 
 def quote(bank, hour, budget, currency):
+    bank = {"海湾银行 A": BANKS[0], "明港银行 B": BANKS[1], "远洋银行 C": BANKS[2]}.get(bank, bank)
     i = BANKS.index(bank)
     amount = money(budget)
     fee = (D("10"), money(max(D("2"), amount * D(".0015"))), D("18"))[i]
@@ -92,7 +108,10 @@ def verify_recipient(data, q):
         return check(data, q, "收款资料无法核实"), None
     if q["currency"] not in recipient["currencies"]:
         return check(data, q, "收款币种不支持"), None
-    if data["address"].strip() != PAYER_ADDRESS:
+    error = address_error(data["address"])
+    if error:
+        return ("待修正", error), None
+    if data["address"] != PAYER_ADDRESS:
         return check(data, q, "地址待核验"), None
     return decision, recipient
 
@@ -256,15 +275,19 @@ def show_receipt(o):
         st.write(f"**{stamp}　{state}**　{msg}")
 
 
-def payment(owner):
+def payment(owner, clock):
     st.header("向香港汇款")
     st.caption("跨境支付通 · 内地 → 香港　｜　虚构账户和模拟银行报价")
-    with st.expander("演示时钟"):
-        hour = st.select_slider("当前香港时间（23:00 至次日 07:00）", options=range(9),
-                                format_func=lambda h: HOURS[h])
+    if clock > 8:
+        st.info(f"当前 {CLOCK[clock]}，此时段用于查看开窗后的回执。要演示新预约，请将侧栏时钟调回夜间。")
+        return
+    hour = clock
     st.caption(f"香港时间 {HOURS[hour]}　·　" + ("服务窗口开放" if hour == 8 else "可预约次日 07:00 汇款"))
     bank = st.selectbox("付款账户", BANKS, format_func=lambda b: b + (" · 常用人民币账户" if b == BANKS[0] else " · 人民币账户"))
     address = st.text_input("付款人登记地址（模拟）", PAYER_ADDRESS)
+    error = address_error(address)
+    if error:
+        st.error(error)
     method = st.radio("收款方式", ("银行账户", "香港手机号"), horizontal=True)
     recipient_bank = st.selectbox("香港收款银行", ("中大银行", "香港银行")) if method == "银行账户" else ""
     name = st.text_input("收款人登记姓名（仅用虚构资料）", RECIPIENTS[0]["name"])
@@ -274,7 +297,7 @@ def payment(owner):
     currency = st.selectbox("收款币种", ("HKD", "CNY"))
     data = dict(name=name, method=method, number=number, bank=recipient_bank, address=address)
     fingerprint = (bank, method, recipient_bank, name, number, budget, currency, address)
-    if st.button("下一步 · 核对汇款", type="primary"):
+    if st.button("下一步 · 核对汇款", type="primary", disabled=bool(error)):
         st.session_state.review = fingerprint
         st.session_state.quote_hour = hour
         st.session_state.pop("bank_choice", None)
@@ -328,12 +351,6 @@ def history(owner):
     if not rows:
         st.info("尚无预约。请先填写汇款。")
         return
-    with st.expander("演示时钟 · 推进全部现有订单"):
-        cols = st.columns(3)
-        for i, stamp in enumerate(("07:00 开窗", "07:05 回执", "11:00 退款"), 1):
-            if cols[i-1].button(stamp):
-                orders(owner, i)
-                st.rerun()
     by_id = {o["id"]:o for o in rows}
     ident = st.selectbox("选择订单", list(by_id), format_func=lambda k: k+" · "+by_id[k]["state"])
     o = by_id[ident]
@@ -355,6 +372,22 @@ def orders_by_id(owner, ident):
     return next(o for o in orders(owner) if o["id"] == ident)
 
 
+@st.dialog("确定清空汇款记录？")
+def confirm_clear(owner):
+    st.write("将删除当前演示的全部汇款记录。清空后无法恢复。")
+    left, right = st.columns(2)
+    if left.button("取消"):
+        st.rerun()
+    def erase():
+        with connect() as con:
+            con.execute("DELETE FROM orders WHERE owner=?", (owner,))
+        for key in ("review", "retry_parent"):
+            st.session_state.pop(key, None)
+
+    if right.button("确定清空", type="primary", on_click=erase):
+        st.rerun()
+
+
 def main():
     st.set_page_config(page_title="RemitGuide · 跨境汇款", page_icon="💱")
     owner = st.query_params.get("demo", "")
@@ -364,16 +397,23 @@ def main():
     st.session_state.setdefault("page", "向香港汇款")
     st.sidebar.title("RemitGuide")
     st.sidebar.caption("个人银行 · 教学模拟")
+    clock = st.sidebar.select_slider("香港演示时间", options=range(len(CLOCK)), format_func=CLOCK.__getitem__)
+    # 跨过节点时补齐事件。回拨只影响新报价，已经发生的扣款和退款不会撤销。
+    step = 3 if CLOCK[clock] == "11:00" else 2 if clock > 8 else 1 if clock == 8 else 0
+    if step:
+        orders(owner, step)
+    if st.sidebar.button("清空记录"):
+        confirm_clear(owner)
     for title in ("向香港汇款", "汇款记录"):
         if st.sidebar.button(title):
             st.session_state.page = title
     if st.session_state.page == "向香港汇款":
-        payment(owner)
+        payment(owner, clock)
     elif st.session_state.page == "汇款记录":
         history(owner)
     else:
         st.session_state.page = "向香港汇款"
-        payment(owner)
+        payment(owner, clock)
 
 
 if __name__ == "__main__":
