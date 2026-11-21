@@ -1,3 +1,4 @@
+"""RemitGuide · 南向汇款教学模拟。启动：streamlit run demo.py"""
 import hashlib
 import json
 import os
@@ -14,9 +15,12 @@ import streamlit as st
 D = Decimal
 BANKS = ("海湾银行", "明港银行", "远洋银行")
 HOURS = ("23:00",) + tuple(f"{h:02}:00" for h in range(8))
+# 教学用官方参考值；模拟银行在同一时点加上各自的报价差额。
 REFERENCE = tuple(map(D, ("1.0780", "1.0760", "1.0800", "1.0830", "1.0810",
                           "1.0790", "1.0750", "1.0770", "1.0730")))
 NORMAL = "正常"
+# 演示备注：全部资料均为虚构。按所选收款路径核对登记号码、户名和银行；
+# 付款人地址与模拟客户档案比对。回执取自匹配账户的模拟银行脚本。
 RECIPIENTS = (
     dict(name="ZHANGSAN", style="pinyin", document="中国大陆居民身份证", sample_id="110101199001010015",
          bank="中大银行", account="1000000001", phone="90000001"),
@@ -25,7 +29,11 @@ RECIPIENTS = (
     dict(name="Kevin James", style="english", document="护照", sample_id="P00000001",
          bank="香港银行", account="2000000003", phone="90000003"),
 )
-PAYER_ADDRESS = "Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong"
+PAYER_ADDRESSES = {
+    "张三": "Flat B2, 8F, Cedar Court, No.18 Maple Lane, Sha Tin, New Territories, Hong Kong",
+    "陈大文": "Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong",
+    "Kevin James": "Flat C3, 12F, Willow House, No.32 Laurel Road, Sha Tin, New Territories, Hong Kong",
+}
 # 付款账户与收款人独立；比价和更换收款人不会改变资金来源。
 ACCOUNTS = {
     "张三": (D("18000"), D("12000"), D("24000")),
@@ -130,7 +138,7 @@ def verify_recipient(data, q):
     error = address_error(data["address"])
     if error:
         return ("待修正", error), None
-    if data["address"] != PAYER_ADDRESS:
+    if data["address"] != PAYER_ADDRESSES[data["holder"]]:
         return check(data, q, "地址待核验"), None
     return decision, recipient
 
@@ -350,24 +358,33 @@ def payment(owner, clock):
     st.header("向香港汇款")
     st.caption("跨境支付通 · 内地 → 香港　｜　虚构账户和模拟银行报价")
     hour = clock
-    holder = st.selectbox("付款账户", list(ACCOUNTS))
-    available = capacity(holder, orders(owner))
-    st.caption(f"可用余额 {money(available[0])} CNY　·　单笔额度 {money(available[1])} CNY　·　今日剩余额度 {money(available[2])} CNY")
-    bank = st.selectbox("报价银行", BANKS)
-    address = st.text_input("付款人登记地址（模拟）", PAYER_ADDRESS)
-    error = address_error(address)
-    if error:
-        st.error(error)
-    method = st.radio("收款方式", ("银行账户", "香港手机号"), horizontal=True)
-    recipient_bank = st.selectbox("香港收款银行", ("中大银行", "香港银行")) if method == "银行账户" else ""
-    name = st.text_input("收款人英文登记姓名", RECIPIENTS[0]["name"])
-    document = st.selectbox("收款人证件类型", [r["document"] for r in RECIPIENTS])
-    sample_id = st.text_input("收款人证件号码（仅输入手册中的虚构号码）", RECIPIENTS[0]["sample_id"])
-    number = st.text_input("收款账号" if recipient_bank else "香港手机号（+852）",
-                           RECIPIENTS[0]["account"] if recipient_bank else RECIPIENTS[0]["phone"], key="number_"+method)
-    budget = st.number_input("付款总额 · CNY（含手续费）", 0.01, 1000000.0, 5000.0, step=100.0)
-    currency = st.selectbox("收款币种", ("HKD", "CNY"))
-    data = dict(name=name, method=method, number=number, bank=recipient_bank, address=address, document=document, sample_id=sample_id)
+    left, right = st.columns(2)
+    with left.container(border=True):
+        st.subheader("付款账户资料")
+        holder = st.selectbox("付款账户", list(ACCOUNTS))
+        available = capacity(holder, orders(owner))
+        st.caption(f"可用余额 {money(available[0])} CNY　·　单笔额度 {money(available[1])} CNY　·　今日剩余额度 {money(available[2])} CNY")
+        bank = st.selectbox("报价银行", BANKS)
+        addresses = list(PAYER_ADDRESSES.values())
+        address = st.selectbox("付款人登记地址（模拟）", addresses, index=addresses.index(PAYER_ADDRESSES[holder]),
+                               key="address_" + holder, accept_new_options=True, help="选择登记地址，或输入新地址进行核验。")
+        error = address_error(address)
+        if error:
+            st.error(error)
+    with right.container(border=True):
+        st.subheader("收款人资料")
+        method = st.radio("收款方式", ("银行账户", "香港手机号"), horizontal=True)
+        recipient_bank = st.selectbox("香港收款银行", ("中大银行", "香港银行")) if method == "银行账户" else ""
+        name = st.text_input("收款人英文登记姓名", RECIPIENTS[0]["name"])
+        document = st.selectbox("收款人证件类型", [r["document"] for r in RECIPIENTS])
+        sample_id = st.text_input("收款人证件号码（仅输入手册中的虚构号码）", RECIPIENTS[0]["sample_id"])
+        number = st.text_input("收款账号" if recipient_bank else "香港手机号（+852）",
+                               RECIPIENTS[0]["account"] if recipient_bank else RECIPIENTS[0]["phone"], key="number_"+method)
+    with left.container(border=True):
+        st.subheader("汇款金额")
+        budget = st.number_input("付款总额 · CNY（含手续费）", 0.01, 1000000.0, 5000.0, step=100.0)
+        currency = st.selectbox("收款币种", ("HKD", "CNY"))
+    data = dict(holder=holder, name=name, method=method, number=number, bank=recipient_bank, address=address, document=document, sample_id=sample_id)
     fingerprint = (holder, bank, method, recipient_bank, name, number, budget, currency, address, document, sample_id)
     if st.button("下一步 · 核对汇款", type="primary", disabled=bool(error)):
         problem = limits_message(money(budget), available)
@@ -477,7 +494,8 @@ def confirm_clear(owner):
 
 
 def main():
-    st.set_page_config(page_title="RemitGuide · 跨境汇款", page_icon="💱")
+    st.set_page_config(page_title="RemitGuide · 跨境汇款", page_icon="💱", layout="wide")
+    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}</style>""", unsafe_allow_html=True)
     owner = st.query_params.get("demo", "")
     if not re.fullmatch("[a-f0-9]{32}", owner):
         owner = uuid.uuid4().hex
@@ -521,14 +539,24 @@ def main():
         history(owner)
         return
     if step >= 2:
-        refunds = step == 3
-        st.header("11:00 退汇记录" if refunds else "银行回执")
-        visible = [o for o in advanced if o["sent"] and (not refunds or o["state"] == "已退汇")]
-        if not visible:
-            st.info("无订单" if refunds else "无有效订单")
-        for o in visible:
-            with st.expander("订单 " + o["id"] + " · " + o["state"], expanded=True):
-                show_receipt(o)
+        st.header("07:05 银行回执")
+        submitted = [o for o in advanced if o["sent"]]
+        if not submitted:
+            st.info("无有效订单")
+        for o in submitted:
+            events = [e for e in o["events"] if e[0] != "11:00"]
+            receipt = dict(o, events=events, state=events[-1][1], refund="0.00")
+            with st.expander("订单 " + o["id"] + " · " + receipt["state"], expanded=True):
+                show_receipt(receipt)
+        if step == 3:
+            st.divider()
+            st.header("11:00 退回记录")
+            returned = [o for o in submitted if o["state"] == "已退汇"]
+            if not returned:
+                st.info("无订单")
+            for o in returned:
+                with st.expander("退款入账 · " + o["id"], expanded=True):
+                    show_receipt(dict(o, events=[e for e in o["events"] if e[0] == "11:00"]))
         return
     clock = 0 if h == 23 else h + 1
     if st.session_state.page == "向香港汇款":

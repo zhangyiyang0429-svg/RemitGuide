@@ -2,7 +2,7 @@
 
 [Chinese manual](README_CN.md)
 
-RemitGuide simulates a personal remittance from mainland China to Hong Kong. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
+RemitGuide simulates a personal remittance from mainland China to Hong Kong. Use only the fictional profiles below. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
 
 ## Start the demo
 
@@ -13,11 +13,14 @@ git pull --ff-only origin feat/remittance-flow
 python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-Open port 8501 in your browser. The application interface is in Simplified Chinese. The default paying bank is Bay Bank, the first option. The other two options are Minggang Bank and Ocean Bank. All three use this payer address:
+Open port 8501 in your browser. The application interface is in Simplified Chinese. The default paying bank is Bay Bank, the first option. The other two options are Minggang Bank and Ocean Bank. Selecting a funding account loads its simulated address. Select another address to trigger manual review or type a custom address to test formatting.
 
-```text
-Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong
-```
+| Payer | Registered address |
+| --- | --- |
+| Zhang San | Flat B2, 8F, Cedar Court, No.18 Maple Lane, Sha Tin, New Territories, Hong Kong |
+| Chen Daiwen | Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong |
+| Kevin James | Flat C3, 12F, Willow House, No.32 Laurel Road, Sha Tin, New Territories, Hong Kong |
+
 
 ## Funding accounts and clock
 
@@ -29,7 +32,7 @@ Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Ko
 
 Select the funding account independently of the quote provider and recipient. Bookings reserve the total including fees; manual-review requests reserve nothing. At opening the reservation converts to a debit. A refund restores the actual amount to the balance; daily turnover remains used. Each demo link represents one business day. Rewinding leaves usage intact; confirming Clear Records restores the opening values. Older records without a funding account are attributed to the first account.
 
-Type a 24-hour HH:MM value in the sidebar and confirm it. 23:00–06:59 is booking and hourly pricing; 07:00–07:04 shows submitted payments; 07:05–10:59 shows bank receipts; 11:00–22:59 shows refunds. Try 23:30, 07:03, 09:15 and 15:00. The chart at the bottom of the sidebar shows one simulated official reference rate (HKD per CNY) in overnight order. All three bank quotes exceed this benchmark at each hour; compare them on the review screen.
+Type a 24-hour HH:MM value in the sidebar and confirm it. 23:00–06:59 is booking and hourly pricing; 07:00–07:04 shows submitted payments; 07:05–10:59 shows bank receipts; 11:00–22:59 keeps receipts visible and appends the refund list. Try 23:30, 07:03, 09:15 and 15:00. The chart at the bottom of the sidebar shows one simulated official reference rate (HKD per CNY) in overnight order. All three bank quotes exceed this benchmark at each hour; compare them on the review screen.
 
 ## Valid recipients
 
@@ -46,7 +49,7 @@ For an account transfer, enter the bank and account number. For a mobile transfe
 1. Set the sidebar clock to 02:00. Keep the default recipient and enter a total payment of CNY 5,000. Review the payment and optionally compare the three banks.
 2. The default bank deducts a CNY 10 fee. At 1.0850 HKD per CNY, the recipient receives HKD 5,414.15. Confirm the booking to lock the rate.
 3. Move the clock to 07:00 to submit the booking. At 07:05, the screen automatically shows receipts for all submitted orders. Every normal order is pending at 07:00 and confirms settlement at 07:05, for any recipient and either currency. With no submitted orders, the screen reports that there are no valid orders.
-4. At 11:00, only returned orders appear. If every payment succeeded, or no orders were submitted, the list is empty. Correcting an input error before booking does not cause a refund.
+4. At 11:00, all original receipts remain visible, followed by a separate list of returned orders. If every payment succeeded, or no orders were submitted, the list is empty. Correcting an input error before booking does not cause a refund.
 5. For a return, use any recipient and either currency. At 07:00, open the pending order, expand the simulated receiving-bank notice and send a suspension notice for that payment. The 07:05 receipt explains the return; the 11:00 receipt breaks down the refund. Other transactions settle normally.
 
 Skipping directly to 11:00 processes intermediate events. Moving the clock backwards does not debit a settled payment again. To start over, use the sidebar clear-records button. Cancel keeps the records. Confirm deletes only the records for the current demo link. Move the clock back to 23:00 for a new booking.
@@ -82,7 +85,7 @@ After editing the address, press Enter or leave the field. For other fields, sel
 | Use another registered recipient’s number with the original name and document | Cross-record verification fails |
 | Correct invalid input and book again | Pending at 07:00, settled at 07:05; no return at 11:00 |
 | Save only a manual-review request | No valid submitted order at 07:05; no debit |
-| Submit two payments and suspend just one at 07:00 | Two distinct receipts at 07:05; only the returned payment appears at 11:00 |
+| Submit two payments and suspend just one at 07:00 | Two distinct receipts at 07:05; both receipts remain visible at 11:00, with one refund listed below |
 | Query repeatedly or rewind and advance again | Same reference and no duplicate submission or debit |
 | Cancel the clear-records dialog, then repeat and confirm | Cancel preserves records; after confirmation both receipt views are empty |
 
