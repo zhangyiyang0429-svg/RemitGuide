@@ -2,8 +2,6 @@
 
 [Chinese manual](README_CN.md)
 
-RemitGuide simulates a personal remittance from mainland China to Hong Kong. Use only the fictional profiles below. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
-
 ## Start the demo
 
 In Codespaces on branch `feat/remittance-flow`, stop any previous server with Ctrl+C, then run:
@@ -21,7 +19,7 @@ Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Ko
 
 ## Valid recipients
 
-| Registered English name | Receiving bank | Account | Hong Kong phone | Document type | Fictional document number |
+| Registered English name | Receiving bank | Account | Hong Kong phone | Document type | Mock document number |
 | --- | --- | --- | --- | --- | --- |
 | ZHANGSAN | CU Bank (first option) | 1000000001 | 90000001 | Mainland resident ID (first option) | 110101199001010015 |
 | CHENDAIWEN | Hong Kong Bank (second option) | 2000000002 | 90000002 | Hong Kong resident ID (second option) | A123456(3) |
