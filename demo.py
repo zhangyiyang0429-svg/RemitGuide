@@ -1,3 +1,4 @@
+"""RemitGuide · 南向汇款教学模拟。启动：streamlit run demo.py"""
 import hashlib
 import json
 import os
@@ -7,6 +8,8 @@ import uuid
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
+import altair as alt
+import pandas as pd
 import streamlit as st
 
 D = Decimal
@@ -26,7 +29,12 @@ RECIPIENTS = (
          bank="香港银行", account="2000000003", phone="90000003"),
 )
 PAYER_ADDRESS = "Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong"
-CLOCK = HOURS + ("07:05", "08:00", "09:00", "10:00", "11:00")
+# 付款账户与收款人独立；比价和更换收款人不会改变资金来源。
+ACCOUNTS = {
+    "张三": (D("18000"), D("12000"), D("24000")),
+    "陈大文": (D("32000"), D("15000"), D("20000")),
+    "Kevin James": (D("45000"), D("25000"), D("35000")),
+}
 # 教学地址模板：先检查英文和标点，再核对固定地区段。
 WORDS = r"[A-Za-z]+(?: [A-Za-z]+)*"
 ADDRESS_PATTERN = re.compile(
@@ -74,7 +82,7 @@ def check(data, q, issue):
         return "待修正", "本模拟路线要求半角数字，手机号为 8 位，账号为 8 至 16 位。"
     if D(q["total"]) <= D(q["fee"]):
         return "待修正", "付款总额须大于手续费。"
-    if D(q["total"]) > 50000 or issue == "超过累计额度":
+    if issue == "超过累计额度":
         return "受限", "已超出演示账户的可用汇款额度。"
     if issue == "手机号未登记" and mobile:
         return "待修正", "此号码未取得可用收款登记。请核对或改用银行账户。"
@@ -155,7 +163,7 @@ def advance(o, step):
             event(o, "07:00", "未提交", "执行前余额不足，未扣款。")
         else:
             o["sent"] = 1
-            event(o, "07:00", "已提交", "已发送至银行。")
+            event(o, "07:00", "已提交", "已发送至模拟银行。")
             if o["decision"][0] != "已通过" or o["outcome"] == "银行拒绝":
                 event(o, "07:00", "已拒绝", "银行拒绝本次交易，未扣款。")
             else:
@@ -191,8 +199,41 @@ def connect():
     return conn
 
 
+def capacity(holder, records):
+    balance, single, daily = ACCOUNTS[holder]
+    used = D("0")
+    for o in records:
+        if o.get("payer", "张三") != holder:
+            continue
+        held = D(o["quote"]["total"]) if o["state"] == "已预约" else D("0")
+        spent = held + D(o["debit"])
+        balance += D(o["refund"]) - spent
+        used += spent
+    return max(D("0"), balance), single, max(D("0"), daily - used)
+
+
+def limits_message(amount, available):
+    labels = ("可用余额不足", "超过单笔转账额度", "超过当日剩余转账额度")
+    return "；".join(f"{label}（可用 {money(limit)} CNY）"
+                    for label, limit in zip(labels, available) if amount > limit)
+
+
+@st.dialog("付款账户核验未通过")
+def limit_dialog(message):
+    st.error(message)
+    st.write("请降低付款金额，或返回表单选择其他付款账户。")
+    if st.button("返回修改"):
+        st.rerun()
+
+
 def save(owner, order):
     with connect() as con:
+        con.execute("BEGIN IMMEDIATE")
+        if order.get("payer") and order["decision"][0] == "已通过":
+            records = (json.loads(row[0]) for row in con.execute("SELECT body FROM orders WHERE owner=?", (owner,)))
+            error = limits_message(D(order["quote"]["total"]), capacity(order["payer"], records))
+            if error:
+                return error
         con.execute("INSERT OR IGNORE INTO orders VALUES(?,?,?)",
                     (owner, order["id"], json.dumps(order, ensure_ascii=False)))
 
@@ -289,6 +330,7 @@ def show_receipt(o):
     q = o["quote"]
     st.subheader(o["state"])
     st.caption(f"交易参考编号 {o['id']} · {q['bank']} · 报价 {q['ref']}")
+    st.caption("付款账户：" + o.get("payer", "张三"))
     if o.get("parent"):
         st.caption("关联原交易 " + o["parent"])
     cols = st.columns(3)
@@ -310,12 +352,11 @@ def show_receipt(o):
 def payment(owner, clock):
     st.header("向香港汇款")
     st.caption("跨境支付通 · 内地 → 香港　｜　虚构账户和模拟银行报价")
-    if clock > 8:
-        st.info(f"当前 {CLOCK[clock]}，此时段用于查看开窗后的回执。要演示新预约，请将侧栏时钟调回夜间。")
-        return
     hour = clock
-    st.caption(f"香港时间 {HOURS[hour]}　·　" + ("服务窗口开放" if hour == 8 else "可预约次日 07:00 汇款"))
-    bank = st.selectbox("付款账户", BANKS, format_func=lambda b: b + (" · 常用人民币账户" if b == BANKS[0] else " · 人民币账户"))
+    holder = st.selectbox("付款账户", list(ACCOUNTS))
+    available = capacity(holder, orders(owner))
+    st.caption(f"可用余额 {money(available[0])} CNY　·　单笔额度 {money(available[1])} CNY　·　今日剩余额度 {money(available[2])} CNY")
+    bank = st.selectbox("报价银行", BANKS)
     address = st.text_input("付款人登记地址（模拟）", PAYER_ADDRESS)
     error = address_error(address)
     if error:
@@ -330,8 +371,13 @@ def payment(owner, clock):
     budget = st.number_input("付款总额 · CNY（含手续费）", 0.01, 1000000.0, 5000.0, step=100.0)
     currency = st.selectbox("收款币种", ("HKD", "CNY"))
     data = dict(name=name, method=method, number=number, bank=recipient_bank, address=address, document=document, sample_id=sample_id)
-    fingerprint = (bank, method, recipient_bank, name, number, budget, currency, address, document, sample_id)
+    fingerprint = (holder, bank, method, recipient_bank, name, number, budget, currency, address, document, sample_id)
     if st.button("下一步 · 核对汇款", type="primary", disabled=bool(error)):
+        problem = limits_message(money(budget), available)
+        if problem:
+            st.session_state.review = None
+            limit_dialog(problem)
+            return
         st.session_state.review = fingerprint
         st.session_state.quote_hour = hour
         st.session_state.pop("bank_choice", None)
@@ -373,7 +419,11 @@ def payment(owner, clock):
         o["parent"] = st.session_state.pop("retry_parent", None)
         if hour == 8:
             advance(o, 1)
-        save(owner, o)
+        o["payer"] = holder
+        problem = save(owner, o)
+        if problem:
+            limit_dialog(problem)
+            return
         st.session_state.review = None
         st.session_state.page = "汇款记录"
         st.rerun()
@@ -438,15 +488,41 @@ def main():
     st.session_state.setdefault("page", "向香港汇款")
     st.sidebar.title("RemitGuide")
     st.sidebar.caption("个人银行 · 教学模拟")
-    clock = st.sidebar.select_slider("香港演示时间", options=range(len(CLOCK)), format_func=CLOCK.__getitem__)
-    # 跨过节点时补齐事件。回拨只影响新报价，已经发生的扣款和退款不会撤销。
-    step = 3 if CLOCK[clock] == "11:00" else 2 if clock > 8 else 1 if clock == 8 else 0
-    if step:
-        advanced = orders(owner, step)
+    st.session_state.setdefault("confirmed_time", "23:00")
+    with st.sidebar.form("demo_time"):
+        entered = st.text_input("香港演示时间（HH:MM）", "23:00", key="draft_demo_time")
+        if st.form_submit_button("确定时间"):
+            if re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", entered.strip()):
+                st.session_state.confirmed_time = entered.strip()
+            else:
+                st.error("请输入有效的 24 小时时间，例如 07:03。")
+    stamp = st.session_state.confirmed_time
+    h, m = map(int, stamp.split(":"))
+    minutes = h * 60 + m
+    step = 0 if minutes >= 1380 or minutes < 420 else 1 if minutes < 425 else 2 if minutes < 660 else 3
+    st.sidebar.caption(f"已确认 {stamp} · " + ("夜间预约", "开窗提交", "银行回执", "退汇处理")[step])
     if st.sidebar.button("清空记录"):
         confirm_clear(owner)
-    if clock > 8:
-        refunds = CLOCK[clock] == "11:00"
+    if step == 0:
+        for title in ("向香港汇款", "汇款记录"):
+            if st.sidebar.button(title):
+                st.session_state.page = title
+    with st.sidebar:
+        st.caption("模拟汇率曲线 · 每 1 CNY 可兑换的 HKD")
+        points = pd.DataFrame([dict(时间=label, 银行=bank, 汇率=float(quote(bank, i, 5000, "HKD")["rate"]))
+                               for bank in BANKS for i, label in enumerate(HOURS)])
+        chart = alt.Chart(points).mark_line(point=True).encode(
+            x=alt.X("时间:O", sort=list(HOURS)), y=alt.Y("汇率:Q", scale=alt.Scale(zero=False)),
+            color=alt.Color("银行:N", legend=alt.Legend(orient="bottom")),
+            tooltip=["时间", "银行", alt.Tooltip("汇率:Q", format=".4f")])
+        st.altair_chart(chart)
+    if step:
+        advanced = orders(owner, step)
+    if step == 1:
+        history(owner)
+        return
+    if step >= 2:
+        refunds = step == 3
         st.header("11:00 退汇记录" if refunds else "银行回执")
         visible = [o for o in advanced if o["sent"] and (not refunds or o["state"] == "已退汇")]
         if not visible:
@@ -455,9 +531,7 @@ def main():
             with st.expander("订单 " + o["id"] + " · " + o["state"], expanded=True):
                 show_receipt(o)
         return
-    for title in ("向香港汇款", "汇款记录"):
-        if st.sidebar.button(title):
-            st.session_state.page = title
+    clock = 0 if h == 23 else h + 1
     if st.session_state.page == "向香港汇款":
         payment(owner, clock)
     elif st.session_state.page == "汇款记录":

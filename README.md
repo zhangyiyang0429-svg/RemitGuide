@@ -2,6 +2,8 @@
 
 [Chinese manual](README_CN.md)
 
+RemitGuide simulates a personal remittance from mainland China to Hong Kong. Use only the fictional profiles below. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
+
 ## Start the demo
 
 In Codespaces on branch `feat/remittance-flow`, stop any previous server with Ctrl+C, then run:
@@ -17,9 +19,21 @@ Open port 8501 in your browser. The application interface is in Simplified Chine
 Flat A1, 6F, Chinese Hill, No.77 Dai Hok Lane, Sha Tin, New Territories, Hong Kong
 ```
 
+## Funding accounts and clock
+
+| Funding account | Opening balance (CNY) | Per-payment cap | Daily cap |
+| --- | ---: | ---: | ---: |
+| Zhang San (first) | 18,000 | 12,000 | 24,000 |
+| Chen Daiwen (second) | 32,000 | 15,000 | 20,000 |
+| Kevin James (third) | 45,000 | 25,000 | 35,000 |
+
+Select the funding account independently of the quote provider and recipient. Bookings reserve the total including fees; manual-review requests reserve nothing. At opening the reservation converts to a debit. A refund restores the actual amount to the balance; daily turnover remains used. Each demo link represents one business day. Rewinding leaves usage intact; confirming Clear Records restores the opening values. Older records without a funding account are attributed to the first account.
+
+Type a 24-hour HH:MM value in the sidebar and confirm it. 23:00–06:59 is booking and hourly pricing; 07:00–07:04 shows submitted payments; 07:05–10:59 shows bank receipts; 11:00–22:59 shows refunds. Try 23:30, 07:03, 09:15 and 15:00. The chart at the bottom of the sidebar shows all three simulated HKD-per-CNY rate series in overnight order.
+
 ## Valid recipients
 
-| Registered English name | Receiving bank | Account | Hong Kong phone | Document type | Mock document number |
+| Registered English name | Receiving bank | Account | Hong Kong phone | Document type | Fictional document number |
 | --- | --- | --- | --- | --- | --- |
 | ZHANGSAN | CU Bank (first option) | 1000000001 | 90000001 | Mainland resident ID (first option) | 110101199001010015 |
 | CHENDAIWEN | Hong Kong Bank (second option) | 2000000002 | 90000002 | Hong Kong resident ID (second option) | A123456(3) |
@@ -59,7 +73,10 @@ After editing the address, press Enter or leave the field. For other fields, sel
 | Enter a seven-digit phone, a country prefix, or full-width digits | Phone must contain eight ASCII digits |
 | Change the mobile number to 90000009 | No registered mobile payment route |
 | Set the default bank payment to CNY 10 or less | Payment must exceed the fee |
-| Enter CNY 50,000.01 | Demo payment limit exceeded; the input control accepts 0.01 to 1,000,000 |
+| Start fresh with Zhang San and enter 12,001 | Per-payment cap exceeded; 12,000 is accepted |
+| Reserve 12,000 with Zhang San, then request 6,001 | Insufficient available balance; 6,000 remains |
+| Reserve 15,000 with Chen Daiwen, then request 5,001 | Daily allowance exceeded; 5,000 remains |
+| Confirm 24:00 or 07:60 | Invalid time; previous confirmed time remains active |
 | Review at 01:00, then move the clock to 02:00 before confirming | Quote expired; compare and accept the refreshed quote |
 | Book each recipient in both HKD and CNY | All six combinations are supported; CNY uses rate 1, HKD uses the bank quote |
 | Use another registered recipient’s number with the original name and document | Cross-record verification fails |
