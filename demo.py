@@ -1,4 +1,3 @@
-"""RemitGuide · 南向汇款教学模拟。启动：streamlit run demo.py"""
 import hashlib
 import json
 import os
@@ -156,7 +155,7 @@ def advance(o, step):
             event(o, "07:00", "未提交", "执行前余额不足，未扣款。")
         else:
             o["sent"] = 1
-            event(o, "07:00", "已提交", "已发送至模拟银行。")
+            event(o, "07:00", "已提交", "已发送至银行。")
             if o["decision"][0] != "已通过" or o["outcome"] == "银行拒绝":
                 event(o, "07:00", "已拒绝", "银行拒绝本次交易，未扣款。")
             else:
