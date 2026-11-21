@@ -2,7 +2,7 @@
 
 [Chinese manual](README_CN.md)
 
-RemitGuide simulates a personal remittance from mainland China to Hong Kong. Use only the fictional profiles below. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
+RemitGuide simulates a personal remittance from mainland China to Hong Kong. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
 
 ## Start the demo
 
