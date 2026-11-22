@@ -1,4 +1,3 @@
-"""English display strings. Order data and simulation states retain their original keys."""
 import re
 import streamlit as st
 
