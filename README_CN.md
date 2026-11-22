@@ -29,7 +29,7 @@ python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 
 ## 2　正确资料 · Recipient details
 
-默认付款行为海湾银行；也可选择明港银行、远洋银行。登记地址随付款账户自动更新，只读显示。
+默认付款行为海湾银行；也可选择明港银行、远洋银行。登记地址随付款账户自动填入，可直接编辑。以陈大文为例，把英文逗号换成中文逗号，再按 Enter，会显示格式错误；将 New Territories 改为 Old Territories 会显示无效地址；仅把 Flat A1 改为 Flat B2，点击核对后进入银行复核。恢复原地址即可重新核对。
 
 | 付款人 | 登记地址 |
 | --- | --- |

@@ -13,7 +13,7 @@ git pull --ff-only origin feat/remittance-flow
 python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-Open port 8501 in your browser. The interface supports Chinese and English. The default paying bank is Bay Bank, the first option. The other two options are Minggang Bank and Ocean Bank. Selecting a funding account displays its registered address as read-only.
+Open port 8501 in your browser. The interface supports Chinese and English. The default paying bank is Bay Bank, the first option. The other two options are Minggang Bank and Ocean Bank. Selecting a funding account fills its registered address in an editable field. For Chen Daiwen, replace an English comma with a full-width comma and press Enter to trigger a format error. Changing New Territories to Old Territories triggers an invalid region. Changing only Flat A1 to Flat B2 triggers bank review when reviewing the transfer. Restore the original address to retry.
 
 | Payer | Registered address |
 | --- | --- |

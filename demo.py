@@ -432,13 +432,11 @@ def payment(owner, clock):
         single, daily = st.columns(2)
         single.metric(tr("单笔额度") + " · CNY", f"{available[1]:,.2f}")
         daily.metric(tr("今日剩余额度") + " · CNY", f"{available[2]:,.2f}")
-        address = PAYER_ADDRESSES[holder]
-        st.caption(tr("付款人登记地址（模拟）"))
-        st.write(address)
-        st.button("RemitGuide Account Profile Open API", disabled=True)
+        address = st.text_input(tr("付款人登记地址（模拟）"), PAYER_ADDRESSES[holder], key="payer_address_" + holder)
         error = address_error(address)
         if error:
             st.error(tr(error))
+        st.button("RemitGuide Account Profile Open API", disabled=True)
     with right.container(border=True):
         st.subheader(tr("收款人资料"))
         st.button("RemitGuide Remittance Open API", disabled=True)
@@ -573,7 +571,12 @@ def confirm_clear(owner):
 
 def main():
     st.set_page_config(page_title="RemitGuide", page_icon="💱", layout="wide")
-    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}.route {background:linear-gradient(110deg,#103b49,#24575b);padding:1.3rem 1.6rem;border-radius:16px;color:white;margin-bottom:.8rem}.route strong{font-size:1.35rem}.route span{color:#97d8ca}.route small{display:block;margin-top:.5rem;color:#d4e8e4}[data-testid="stMetric"]{padding:.7rem 1rem;border-left:4px solid #30938b;background:#eff7f5;border-radius:0 12px 12px 0;color:#173f46}[data-testid="stVerticalBlockBorderWrapper"]{box-shadow:0 4px 18px rgba(22,72,83,.07)} [data-testid="stMainBlockContainer"]{padding-bottom:4rem} .route{border-bottom:4px solid #68baaa;background:radial-gradient(ellipse at 90% 10%,#347672,transparent 50%),#103b49}.route span{letter-spacing:.14em} [data-testid="stMetricValue"]{font-variant-numeric:tabular-nums} [data-testid="stExpander"]{border-radius:14px;overflow:hidden} [data-testid="stMain"]{background:linear-gradient(145deg,#f2f7f6,#fff 65%)} [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]{background:#fff;border-color:#dbe6e3;border-radius:18px} .route{position:relative;isolation:isolate;overflow:hidden;padding:1.55rem 2rem}.route:after{content:"";position:absolute;z-index:-1;right:-3rem;top:-8rem;width:27rem;height:27rem;border-radius:50%;border:1px solid #74b0a8;box-shadow:0 0 0 2rem #ffffff0d,0 0 0 4rem #ffffff09}.route strong{font-size:clamp(1.2rem,2.5vw,1.85rem)} [data-testid="stBaseButton-primary"]{background:#116757;border-color:#116757;border-radius:12px;font-weight:650} [data-testid="stToolbar"], #MainMenu, [data-testid="stMainMenu"] {display:none!important} .route{background:linear-gradient(90deg,#0a303e 2%,#0a303ec9 45%,#0a303e22),url('https://upload.wikimedia.org/wikipedia/commons/2/23/Hong_Kong_Skyline_Restitch_-_Dec_2007.jpg') center 50%/cover;min-height:9rem}.route:after{display:none}[data-testid="stColumn"] [data-testid="stColumn"] [data-testid="stMetricValue"]{font-size:clamp(1rem,2vw,1.65rem)} </style>""", unsafe_allow_html=True)
+    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}.route {background:linear-gradient(110deg,#103b49,#24575b);padding:1.3rem 1.6rem;border-radius:16px;color:white;margin-bottom:.8rem}.route strong{font-size:1.35rem}.route span{color:#97d8ca}.route small{display:block;margin-top:.5rem;color:#d4e8e4}[data-testid="stMetric"]{padding:.7rem 1rem;border-left:4px solid #30938b;background:#eff7f5;border-radius:0 12px 12px 0;color:#173f46}[data-testid="stVerticalBlockBorderWrapper"]{box-shadow:0 4px 18px rgba(22,72,83,.07)} [data-testid="stMainBlockContainer"]{padding-bottom:4rem} .route{border-bottom:4px solid #68baaa;background:radial-gradient(ellipse at 90% 10%,#347672,transparent 50%),#103b49}.route span{letter-spacing:.14em} [data-testid="stMetricValue"]{font-variant-numeric:tabular-nums} [data-testid="stExpander"]{border-radius:14px;overflow:hidden} [data-testid="stMain"]{background:linear-gradient(145deg,#f2f7f6,#fff 65%)} [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]{background:#fff;border-color:#dbe6e3;border-radius:18px} .route{position:relative;isolation:isolate;overflow:hidden;padding:1.55rem 2rem}.route:after{content:"";position:absolute;z-index:-1;right:-3rem;top:-8rem;width:27rem;height:27rem;border-radius:50%;border:1px solid #74b0a8;box-shadow:0 0 0 2rem #ffffff0d,0 0 0 4rem #ffffff09}.route strong{font-size:clamp(1.2rem,2.5vw,1.85rem)} [data-testid="stBaseButton-primary"]{background:#116757;border-color:#116757;border-radius:12px;font-weight:650} [data-testid="stToolbar"], #MainMenu, [data-testid="stMainMenu"] {display:none!important} .route{background:linear-gradient(110deg,#103b49,#24575b);min-height:9rem}.route:after{display:none}[data-testid="stColumn"] [data-testid="stColumn"] [data-testid="stMetricValue"]{font-size:clamp(1rem,2vw,1.65rem)}
+    [data-testid="stApp"] {background:linear-gradient(115deg,#edf5f2cf,#edf5f288),url('https://upload.wikimedia.org/wikipedia/commons/2/23/Hong_Kong_Skyline_Restitch_-_Dec_2007.jpg') center/cover fixed;}
+    [data-testid="stMain"], [data-testid="stHeader"] {background:transparent}
+    [data-testid="stSidebar"] {background:rgba(240,247,246,.91)}
+    [data-testid="stMainBlockContainer"] {background:rgba(255,255,255,.76);border-radius:18px}
+    </style>""", unsafe_allow_html=True)
     owner = st.query_params.get("demo", "")
     if not re.fullmatch("[a-f0-9]{32}", owner):
         owner = uuid.uuid4().hex
