@@ -13,7 +13,7 @@ git pull --ff-only origin feat/remittance-flow
 python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-Open port 8501 in your browser. The interface supports Chinese and English. The default paying bank is Bay Bank, the first option. The other two options are Minggang Bank and Ocean Bank. Selecting a funding account loads its simulated address. Select another address to trigger manual review or type a custom address to test formatting.
+Open port 8501 in your browser. The interface supports Chinese and English. The default paying bank is Bay Bank, the first option. The other two options are Minggang Bank and Ocean Bank. Selecting a funding account displays its registered address as read-only.
 
 | Payer | Registered address |
 | --- | --- |
@@ -58,13 +58,10 @@ Skipping directly to 11:00 processes intermediate events. Moving the clock backw
 
 ## Change one field at a time
 
-After editing the address, press Enter or leave the field. For other fields, select the review-payment button. Restore the valid field before trying the next example.
+After editing a field, select the review-payment button. Restore the valid field before trying the next example.
 
 | Change | Expected result |
 | --- | --- |
-| Clear the address, use non-English characters, replace an English comma, omit its following space, add a second space, use No77 or F6, or remove a component | Address format error; review is disabled |
-| Change New Territories to Old Territories, Hong Kong to Hong Kang, or Sha Tin to Tai Po | Invalid address region |
-| Change Flat A1 to Flat B2 only | Valid format but different payer record; manual review, no submission at opening |
 | Clear the name | Name required |
 | Enter ZhangSan, ZHANG SAN, Chinese characters, or CHEN DAIWEN for the corresponding pinyin recipient | Use uppercase English letters with no spaces |
 | Change ZHANGSAN to ZHANGSI | Registered name mismatch |
@@ -98,3 +95,17 @@ The address region is case-sensitive. A punctuation error is reported before a r
 Selecting Chen loads his registered name, Hong Kong Bank, HKID and account. Replacing the entire set with Zhang’s data fails verification. Pending returns and completed returns show zero credited to the recipient. Refunds return the CNY principal and retain only the original fees. Historical settlements keep their booked amounts. Use the sidebar language button. Successful receipts compare the locked amount with the same bank at opening and display a single credit difference. Locking does not guarantee a better rate.
 
 Selecting a quote provider displays all three quotes. The disabled Open API button marks the planned bank quote interface. Bank status appears automatically. Refund records appear only for returned payments.
+
+Section 5.3 of the proposal specifies three core interfaces. RemitGuide Remittance Open API marks payee and transfer entry, Confirmation Open API marks pre-order review, and Refund Open API marks returned orders. Account Profile and FX Quotes are supporting interfaces. All buttons are disabled design placeholders.
+
+[Hong Kong Skyline Restitch – Dec 2007, David Iliff](https://commons.wikimedia.org/wiki/File:Hong_Kong_Skyline_Restitch_-_Dec_2007.jpg) · [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) · CSS crop and overlay.
+
+## Core interface contracts
+
+These Python methods run in-process. Workflow events invoke the methods; the disabled buttons mark their locations.
+
+| Method | Input | Response and failure handling |
+|---|---|---|
+| remittance_precheck | Transfer details and quote | Quote ID, decision and guidance. No ID number, account number or address in the response. |
+| confirm_preorder | Session, payer, quote and pre-check response | Order ID on success. A mismatched quote, blocked details or insufficient capacity prevents an executable booking. |
+| refund_settlement | Order awaiting refund | Order ID, currency, refund amount and retained fee. Other states are rejected. The 11:00 clock event triggers settlement. |

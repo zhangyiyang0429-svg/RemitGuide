@@ -180,6 +180,33 @@ def reserve(q, decision, outcome, enhanced=True):
     return order
 
 
+def remittance_precheck(data, quote_record):
+    decision, _ = verify_recipient(data, quote_record)
+    return {"quote_id": quote_record["ref"], "status": decision[0], "guidance": decision[1]}
+
+
+def confirm_preorder(owner, payer, quote_record, check_result, parent=None):
+    if check_result["quote_id"] != quote_record["ref"]:
+        raise ValueError("Pre-check and quote references differ")
+    decision = (check_result["status"], check_result["guidance"])
+    if decision[0] in ("受限", "待修正"):
+        return {"order_id": None, "error": decision[1]}
+    order = reserve(quote_record, decision, "延迟回执")
+    order.update(payer=payer, parent=parent)
+    if quote_record["hour"] == 8:
+        advance(order, 1)
+    error = save(owner, order)
+    return {"order_id": None if error else order["id"], "error": error}
+
+
+def refund_settlement(order):
+    if order["state"] != "退款在途":
+        raise ValueError("Refund requires a pending bank return")
+    fee = D(order["quote"]["fee"])
+    return {"order_id": order["id"], "currency": "CNY",
+            "amount": str(money(D(order["debit"]) - fee)), "retained_fee": str(fee)}
+
+
 def advance(o, step):
     """幂等的银行时钟。1=07:00，2=07:05，3=11:00。"""
     q = o["quote"]
@@ -205,8 +232,7 @@ def advance(o, step):
         else:
             event(o, "07:05", "退款在途", o.get("return_reason", "收款行退回，等待退款入账。"))
     if step >= 3 and o["step"] < 3 and o["state"] == "退款在途":
-        principal = D(q["total"]) - D(q["fee"])
-        o["refund"] = str(money(principal))
+        o["refund"] = refund_settlement(o)["amount"]
         event(o, "11:00", "已退汇", "退款已入付款账户，原手续费不退。")
     o["step"] = max(o["step"], step)
     return o
@@ -403,15 +429,19 @@ def payment(owner, clock):
         profile = PROFILES[holder]
         available = capacity(holder, orders(owner))
         st.metric(tr("可用余额 · CNY"), f"{available[0]:,.2f}")
-        st.caption(tr(f"单笔额度 {available[1]:,.2f} CNY　｜　今日剩余额度 {available[2]:,.2f} CNY"))
-        addresses = list(PAYER_ADDRESSES.values())
-        address = st.selectbox(tr("付款人登记地址（模拟）"), addresses, index=addresses.index(PAYER_ADDRESSES[holder]),
-                               key="address_" + holder, accept_new_options=True, help=tr("选择登记地址，或输入新地址进行核验。"), format_func=tr)
+        single, daily = st.columns(2)
+        single.metric(tr("单笔额度") + " · CNY", f"{available[1]:,.2f}")
+        daily.metric(tr("今日剩余额度") + " · CNY", f"{available[2]:,.2f}")
+        address = PAYER_ADDRESSES[holder]
+        st.caption(tr("付款人登记地址（模拟）"))
+        st.write(address)
+        st.button("RemitGuide Account Profile Open API", disabled=True)
         error = address_error(address)
         if error:
             st.error(tr(error))
     with right.container(border=True):
         st.subheader(tr("收款人资料"))
+        st.button("RemitGuide Remittance Open API", disabled=True)
         method = st.radio(tr("收款方式"), ("银行账户", "香港手机号"), horizontal=True, format_func=tr, key="ui_411")
         recipient_bank = st.selectbox(tr("香港收款银行"), list(RECEIVING_FEES),
             index=list(RECEIVING_FEES).index(profile["bank"]), key="recv_bank_"+holder, format_func=lambda b: tr(f"{b} · 收款手续费 {money(RECEIVING_FEES[b])} CNY")) if method == "银行账户" else ""
@@ -434,7 +464,7 @@ def payment(owner, clock):
         currency = st.selectbox(tr("收款币种"), ("HKD", "CNY"), format_func=tr, key="ui_430")
     with st.container(border=True):
         bank = st.selectbox(tr("报价银行"), BANKS, format_func=tr, key="quote_provider")
-        st.button("Open API", disabled=True)
+        st.button("RemitGuide FX Quotes Open API", disabled=True)
         st.table([{tr("付款银行"): tr(provider), tr("手续费 CNY"): offer["fee"],
                    tr("汇率"): rate_label(offer)}
                   for provider in BANKS for offer in [quote(provider, hour, budget, currency, recipient_bank)]])
@@ -455,6 +485,7 @@ def payment(owner, clock):
         return
     st.divider()
     st.subheader(tr("核对汇款"))
+    st.button("RemitGuide Confirmation Open API", disabled=True)
     choice = bank
     q = quote(choice, hour, budget, currency, recipient_bank)
     st.write(tr(f"**{choice}**　·　{method}尾号 {number[-4:]}"))
@@ -472,7 +503,8 @@ def payment(owner, clock):
             st.session_state.quote_hour = hour
             st.rerun()
         return
-    decision, recipient = verify_recipient(data, q)
+    check_result = remittance_precheck(data, q)
+    decision = (check_result["status"], check_result["guidance"])
     if decision[0] != "已通过":
         st.warning(tr(decision[1]))
     else:
@@ -481,15 +513,11 @@ def payment(owner, clock):
         return
     label = "保存待处理申请" if decision[0] != "已通过" else ("确认汇款" if hour == 8 else "确认预约并锁定报价")
     if st.button(tr(label), type="primary"):
-        o = reserve(q, decision, "延迟回执")
-        o["parent"] = st.session_state.pop("retry_parent", None)
-        if hour == 8:
-            advance(o, 1)
-        o["payer"] = holder
-        problem = save(owner, o)
-        if problem:
-            limit_dialog(problem)
+        result = confirm_preorder(owner, holder, q, check_result, st.session_state.get("retry_parent"))
+        if result["error"]:
+            limit_dialog(result["error"])
             return
+        st.session_state.pop("retry_parent", None)
         st.session_state.review = None
         st.session_state.page = "汇款记录"
         st.rerun()
@@ -545,7 +573,7 @@ def confirm_clear(owner):
 
 def main():
     st.set_page_config(page_title="RemitGuide", page_icon="💱", layout="wide")
-    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}.route {background:linear-gradient(110deg,#103b49,#24575b);padding:1.3rem 1.6rem;border-radius:16px;color:white;margin-bottom:.8rem}.route strong{font-size:1.35rem}.route span{color:#97d8ca}.route small{display:block;margin-top:.5rem;color:#d4e8e4}[data-testid="stMetric"]{padding:.7rem 1rem;border-left:4px solid #30938b;background:#eff7f5;border-radius:0 12px 12px 0;color:#173f46}[data-testid="stVerticalBlockBorderWrapper"]{box-shadow:0 4px 18px rgba(22,72,83,.07)} [data-testid="stMainBlockContainer"]{padding-bottom:4rem} .route{border-bottom:4px solid #68baaa;background:radial-gradient(ellipse at 90% 10%,#347672,transparent 50%),#103b49}.route span{letter-spacing:.14em} [data-testid="stMetricValue"]{font-variant-numeric:tabular-nums} [data-testid="stExpander"]{border-radius:14px;overflow:hidden} [data-testid="stMain"]{background:linear-gradient(145deg,#f2f7f6,#fff 65%)} [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]{background:#fff;border-color:#dbe6e3;border-radius:18px} .route{position:relative;isolation:isolate;overflow:hidden;padding:1.55rem 2rem}.route:after{content:"";position:absolute;z-index:-1;right:-3rem;top:-8rem;width:27rem;height:27rem;border-radius:50%;border:1px solid #74b0a8;box-shadow:0 0 0 2rem #ffffff0d,0 0 0 4rem #ffffff09}.route strong{font-size:clamp(1.2rem,2.5vw,1.85rem)} [data-testid="stBaseButton-primary"]{background:#116757;border-color:#116757;border-radius:12px;font-weight:650} [data-testid="stToolbar"], #MainMenu, [data-testid="stMainMenu"] {display:none!important} </style>""", unsafe_allow_html=True)
+    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}.route {background:linear-gradient(110deg,#103b49,#24575b);padding:1.3rem 1.6rem;border-radius:16px;color:white;margin-bottom:.8rem}.route strong{font-size:1.35rem}.route span{color:#97d8ca}.route small{display:block;margin-top:.5rem;color:#d4e8e4}[data-testid="stMetric"]{padding:.7rem 1rem;border-left:4px solid #30938b;background:#eff7f5;border-radius:0 12px 12px 0;color:#173f46}[data-testid="stVerticalBlockBorderWrapper"]{box-shadow:0 4px 18px rgba(22,72,83,.07)} [data-testid="stMainBlockContainer"]{padding-bottom:4rem} .route{border-bottom:4px solid #68baaa;background:radial-gradient(ellipse at 90% 10%,#347672,transparent 50%),#103b49}.route span{letter-spacing:.14em} [data-testid="stMetricValue"]{font-variant-numeric:tabular-nums} [data-testid="stExpander"]{border-radius:14px;overflow:hidden} [data-testid="stMain"]{background:linear-gradient(145deg,#f2f7f6,#fff 65%)} [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]{background:#fff;border-color:#dbe6e3;border-radius:18px} .route{position:relative;isolation:isolate;overflow:hidden;padding:1.55rem 2rem}.route:after{content:"";position:absolute;z-index:-1;right:-3rem;top:-8rem;width:27rem;height:27rem;border-radius:50%;border:1px solid #74b0a8;box-shadow:0 0 0 2rem #ffffff0d,0 0 0 4rem #ffffff09}.route strong{font-size:clamp(1.2rem,2.5vw,1.85rem)} [data-testid="stBaseButton-primary"]{background:#116757;border-color:#116757;border-radius:12px;font-weight:650} [data-testid="stToolbar"], #MainMenu, [data-testid="stMainMenu"] {display:none!important} .route{background:linear-gradient(90deg,#0a303e 2%,#0a303ec9 45%,#0a303e22),url('https://upload.wikimedia.org/wikipedia/commons/2/23/Hong_Kong_Skyline_Restitch_-_Dec_2007.jpg') center 50%/cover;min-height:9rem}.route:after{display:none}[data-testid="stColumn"] [data-testid="stColumn"] [data-testid="stMetricValue"]{font-size:clamp(1rem,2vw,1.65rem)} </style>""", unsafe_allow_html=True)
     owner = st.query_params.get("demo", "")
     if not re.fullmatch("[a-f0-9]{32}", owner):
         owner = uuid.uuid4().hex
@@ -613,6 +641,7 @@ def main():
         if step == 3 and returned:
             st.divider()
             st.header(tr("11:00 退回记录"))
+            st.button("RemitGuide Refund Open API", disabled=True)
             for o in returned:
                 with st.expander(tr("退款入账 · " + o["id"]), expanded=True):
                     show_receipt(dict(o, events=[e for e in o["events"] if e[0] == "11:00"]))
