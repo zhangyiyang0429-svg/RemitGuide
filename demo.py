@@ -18,8 +18,8 @@ D = Decimal
 BANKS = ("海湾银行", "明港银行", "远洋银行")
 HOURS = ("23:00",) + tuple(f"{h:02}:00" for h in range(8))
 # 教学用官方参考值；模拟银行在同一时点加上各自的报价差额。
-REFERENCE = tuple(map(D, ("1.0780", "1.0760", "1.0800", "1.0830", "1.0810",
-                          "1.0790", "1.0750", "1.0770", "1.0860")))
+REFERENCE = tuple(map(D, ("92.10", "92.28", "92.16", "92.42", "92.30",
+                          "92.49", "92.38", "92.61", "92.90")))
 NORMAL = "正常"
 # 演示备注：全部资料均为虚构。按所选收款路径核对登记号码、户名和银行；
 # 付款人地址与模拟客户档案比对。回执取自匹配账户的模拟银行脚本。
@@ -73,12 +73,21 @@ def quote(bank, hour, budget, currency, receiving_bank=""):
     fee = (D("10"), money(max(D("2"), amount * D(".0015"))), D("18"))[i]
     receiving_fee = RECEIVING_FEES[receiving_bank] if receiving_bank else D("0")
     fee += receiving_fee
-    rate = REFERENCE[hour] + (D(".0020"), D(".0008"), D(".0040"))[i] if currency == "HKD" else D("1")
-    net = money(max(D("0"), amount - fee) * rate)
+    cost = REFERENCE[hour] + (D(".20"), D(".08"), D(".40"))[i]
+    rate = D("100") / cost if currency == "HKD" else D("1")
+    principal = max(D("0"), amount - fee)
+    net = money(principal * 100 / cost) if currency == "HKD" else money(principal)
     key = f"{bank}|{hour}|{amount}|{currency}|{rate}|{fee}"
     return dict(receiving_bank=receiving_bank, receiving_fee=str(money(receiving_fee)), bank=bank, hour=hour, total=str(amount), fee=str(money(fee)),
-                rate=str(rate), net=str(net), currency=currency,
+                cost_per_100=str(cost) if currency == "HKD" else None, rate=str(rate), net=str(net), currency=currency,
                 ref=hashlib.sha256(key.encode()).hexdigest()[:10].upper())
+
+
+def rate_label(q):
+    if q["currency"] == "CNY":
+        return "1 CNY / CNY"
+    cost = D(q["cost_per_100"]) if q.get("cost_per_100") else D("100") / D(q["rate"])
+    return f"{cost:.2f} CNY / 100 HKD"
 
 
 def quote_changed(viewed, current):
@@ -334,7 +343,7 @@ def experiments():
                 checks.append(D(o["refund"]) == expected_refund)
             if category == "报价更新" and enhanced:
                 old = quote(BANKS[0], 2, 5000, "HKD")
-                checks.extend([quote_changed(old, q), o["used_rate"] == "1.0850", q["net"] == "5414.15"])
+                checks.extend([quote_changed(old, q), o["used_rate"] == q["rate"], q["net"] == str(money(D("499000") / D("92.62")))])
             checks.append(data["number"] not in json.dumps(o, ensure_ascii=False))
             results.append(dict(类型=category, 案例=title, 组别="增强组" if enhanced else "对照组",
                                 订单=o["id"], 预检=initial[0] if enhanced else "未启用",
@@ -349,7 +358,7 @@ def fx_dialog(o):
     q = o["quote"]
     opening = quote(q["bank"], 8, q["total"], q["currency"], q.get("receiving_bank", ""))
     delta = money(D(q["net"]) - D(opening["net"]))
-    st.write(tr(f"锁定报价 {q['rate']} · 07:00 开窗报价 {opening['rate']}"))
+    st.write(tr(f"锁定报价 {rate_label(q)} · 07:00 开窗报价 {rate_label(opening)}"))
     st.write(tr(f"锁价实收 {q['net']} · 开窗提交预计实收 {opening['net']} {q['currency']}"))
     st.metric(tr("锁价相对开窗的到账差额"), f"{delta:+,.2f} {q['currency']}")
     path = [D(q["net"])] + [
@@ -378,7 +387,7 @@ def show_receipt(o):
     cols[1].metric(tr("确认退回 · CNY"), o["refund"])
     credited = q["net"] if o["state"] == "已到账" else "0.00" if o["state"] in ("已退汇", "退款在途", "已拒绝", "未提交") else "待确认"
     cols[2].metric(tr(f"收款人实际到账 · {q['currency']}"), tr(credited))
-    st.write(tr(f"预约报价 {q['rate']}　｜　实际执行汇率 {o['used_rate'] or '待执行'}　｜　提交次数 {o['sent']}"))
+    st.write(tr(f"预约报价 {rate_label(q)}　｜　实际执行汇率 {rate_label(q) if o['used_rate'] else '待执行'}　｜　提交次数 {o['sent']}"))
     if o["state"] == "已退汇":
         if D(o["refund"]) == D(o["debit"]) - D(q["fee"]):
             st.info(tr(f"原扣款 {o['debit']} − 原手续费 {q['fee']} = 实退 {o['refund']} CNY。"))
@@ -390,7 +399,7 @@ def show_receipt(o):
             fx_dialog(o)
     if o["sent"]:
         at_open = quote(q["bank"], 8, q["total"], q["currency"])
-        st.caption(tr(f"07:00 市场参考汇率 {at_open['rate']} · 订单确认汇率 {q['rate']}"))
+        st.caption(tr(f"07:00 市场参考汇率 {rate_label(at_open)} · 订单确认汇率 {rate_label(q)}"))
     for stamp, state, msg in o["events"]:
         st.write(tr(f"**{stamp}　{state}**　{msg}"))
 
@@ -436,6 +445,9 @@ def payment(owner, clock):
         st.subheader(tr("汇款金额"))
         budget = st.number_input(tr("付款总额 · CNY（含手续费）"), 0.01, 1000000.0, 5000.0, step=100.0, key="ui_429")
         currency = st.selectbox(tr("收款币种"), ("HKD", "CNY"), format_func=tr, key="ui_430")
+        preview = quote(bank, hour, budget, currency, recipient_bank)
+        st.metric(tr(f"预计实收 · {currency}"), f"{D(preview['net']):,.2f}")
+        st.caption(tr(f"手续费 {preview['fee']} CNY　｜　{rate_label(preview)}"))
     data = dict(holder=holder, name=name, method=method, number=number, bank=recipient_bank, address=address, document=document, sample_id=sample_id)
     fingerprint = (holder, bank, method, recipient_bank, name, number, budget, currency, address, document, sample_id)
     if st.button(tr("下一步 · 核对汇款"), type="primary", disabled=bool(error) or unavailable):
@@ -454,7 +466,7 @@ def payment(owner, clock):
     choice = bank
     if st.checkbox(tr("比较其他可用银行"), key="ui_447"):
         st.table([{tr("付款银行"): tr(b), tr("扣款 CNY"): tr(str(money(budget))), tr("手续费 CNY"): tr(r["fee"]),
-                   tr("汇率"): tr(r["rate"]), tr(f"实收 {currency}"): tr(r["net"])}
+                   tr("汇率"): rate_label(r), tr(f"实收 {currency}"): tr(r["net"])}
                   for b in BANKS for r in [quote(b, hour, budget, currency, recipient_bank)]])
         choice = st.selectbox(tr("选择付款银行"), BANKS, index=BANKS.index(bank), key="bank_choice", format_func=tr)
     q = quote(choice, hour, budget, currency, recipient_bank)
@@ -464,7 +476,7 @@ def payment(owner, clock):
     cols[1].metric(tr("手续费 · CNY"), q["fee"])
     cols[2].metric(tr(f"预计实收 · {currency}"), q["net"])
     st.caption(tr(f"付款行手续费 {money(D(q['fee'])-D(q['receiving_fee']))} CNY · 收款行手续费 {q['receiving_fee']} CNY"))
-    st.caption(tr(f"兑换本金 {money(D(q['total'])-D(q['fee']))} CNY × 汇率 {q['rate']}。"
+    st.caption(tr(f"兑换本金 {money(D(q['total'])-D(q['fee']))} CNY · 汇率 {rate_label(q)}。"
                f"报价 {q['ref']}，本小时有效；确认后保价至本次开窗。"))
     old = quote(choice, st.session_state.quote_hour, budget, currency, recipient_bank)
     if quote_changed(old, q):
@@ -548,7 +560,7 @@ def confirm_clear(owner):
 
 def main():
     st.set_page_config(page_title="RemitGuide", page_icon="💱", layout="wide")
-    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}.route {background:linear-gradient(110deg,#103b49,#24575b);padding:1.3rem 1.6rem;border-radius:16px;color:white;margin-bottom:.8rem}.route strong{font-size:1.35rem}.route span{color:#97d8ca}.route small{display:block;margin-top:.5rem;color:#d4e8e4}[data-testid="stMetric"]{padding:.7rem 1rem;border-left:4px solid #30938b;background:#eff7f5;border-radius:0 12px 12px 0;color:#173f46}[data-testid="stVerticalBlockBorderWrapper"]{box-shadow:0 4px 18px rgba(22,72,83,.07)} [data-testid="stMainBlockContainer"]{padding-bottom:4rem} .route{border-bottom:4px solid #68baaa;background:radial-gradient(ellipse at 90% 10%,#347672,transparent 50%),#103b49}.route span{letter-spacing:.14em} [data-testid="stMetricValue"]{font-variant-numeric:tabular-nums} [data-testid="stExpander"]{border-radius:14px;overflow:hidden} </style>""", unsafe_allow_html=True)
+    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}.route {background:linear-gradient(110deg,#103b49,#24575b);padding:1.3rem 1.6rem;border-radius:16px;color:white;margin-bottom:.8rem}.route strong{font-size:1.35rem}.route span{color:#97d8ca}.route small{display:block;margin-top:.5rem;color:#d4e8e4}[data-testid="stMetric"]{padding:.7rem 1rem;border-left:4px solid #30938b;background:#eff7f5;border-radius:0 12px 12px 0;color:#173f46}[data-testid="stVerticalBlockBorderWrapper"]{box-shadow:0 4px 18px rgba(22,72,83,.07)} [data-testid="stMainBlockContainer"]{padding-bottom:4rem} .route{border-bottom:4px solid #68baaa;background:radial-gradient(ellipse at 90% 10%,#347672,transparent 50%),#103b49}.route span{letter-spacing:.14em} [data-testid="stMetricValue"]{font-variant-numeric:tabular-nums} [data-testid="stExpander"]{border-radius:14px;overflow:hidden} [data-testid="stMain"]{background:linear-gradient(145deg,#f2f7f6,#fff 65%)} [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]{background:#fff;border-color:#dbe6e3;border-radius:18px} .route{position:relative;isolation:isolate;overflow:hidden;padding:1.55rem 2rem}.route:after{content:"";position:absolute;z-index:-1;right:-3rem;top:-8rem;width:27rem;height:27rem;border-radius:50%;border:1px solid #74b0a8;box-shadow:0 0 0 2rem #ffffff0d,0 0 0 4rem #ffffff09}.route strong{font-size:clamp(1.2rem,2.5vw,1.85rem)} [data-testid="stBaseButton-primary"]{background:#116757;border-color:#116757;border-radius:12px;font-weight:650} </style>""", unsafe_allow_html=True)
     with st.container(horizontal=True, horizontal_alignment="right"):
         st.toggle("English / 中文", key="english")
     owner = st.query_params.get("demo", "")
@@ -582,14 +594,14 @@ def main():
                 st.session_state.page = title
     with st.sidebar:
         st.markdown(tr("**官方参考汇率（模拟）**"))
-        st.caption(tr("1 元人民币可兑换的港元数 · 香港时间"))
+        st.caption(tr("每 100 港元所需人民币 · 香港时间"))
         points = pd.DataFrame({"时间": HOURS, "参考汇率": [float(rate) for rate in REFERENCE]})
         chart = alt.Chart(points).mark_line(color="#176BA0", strokeWidth=3, opacity=0.78, point=True).encode(
             x=alt.X("时间:O", sort=list(HOURS), title=None,
                     axis=alt.Axis(values=list(HOURS[::2]), labelAngle=0)),
             y=alt.Y("参考汇率:Q", title=None, scale=alt.Scale(zero=False),
-                    axis=alt.Axis(format=".3f", tickCount=4)),
-            tooltip=[alt.Tooltip("时间:O", title=tr("时间")), alt.Tooltip("参考汇率:Q", title=tr("参考汇率"), format=".4f")])
+                    axis=alt.Axis(format=".2f", tickCount=4)),
+            tooltip=[alt.Tooltip("时间:O", title=tr("时间")), alt.Tooltip("参考汇率:Q", title=tr("参考汇率"), format=".2f")])
         chart = chart.properties(background="transparent", height=165).configure_view(fill="transparent", strokeOpacity=0).configure_axis(gridOpacity=.14, domain=False)
         st.altair_chart(chart, theme=None)
     if step:

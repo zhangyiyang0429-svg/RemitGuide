@@ -32,7 +32,7 @@ Open port 8501 in your browser. The interface supports Chinese and English. The 
 
 Select the funding account independently of the quote provider. Bookings reserve the total including fees; manual-review requests reserve nothing. At opening the reservation converts to a debit. A refund restores the actual amount to the balance; daily turnover remains used. Each demo link represents one business day. Rewinding leaves usage intact; confirming Clear Records restores the opening values. Older records without a funding account are attributed to the first account.
 
-Type a 24-hour HH:MM value in the sidebar and confirm it. 23:00–06:59 is booking and hourly pricing; 07:00–07:04 shows submitted payments; 07:05–10:59 shows bank receipts; 11:00–22:59 keeps receipts visible and appends the refund list. Try 23:30, 07:03, 09:15 and 15:00. The chart at the bottom of the sidebar shows one simulated official reference rate (HKD per CNY) in overnight order. All three bank quotes exceed this benchmark at each hour; compare them on the review screen.
+Type a 24-hour HH:MM value in the sidebar and confirm it. 23:00–06:59 is booking and hourly pricing; 07:00–07:04 shows submitted payments; 07:05–10:59 shows bank receipts; 11:00–22:59 keeps receipts visible and appends the refund list. Try 23:30, 07:03, 09:15 and 15:00. The chart at the bottom of the sidebar shows one simulated official reference rate (CNY per 100 HKD) in overnight order. All three bank quotes exceed this benchmark at each hour; compare them on the review screen.
 
 ## Valid recipients
 
@@ -49,7 +49,7 @@ For an account transfer, enter the bank and account number. For a mobile transfe
 ## Run a successful payment
 
 1. Set the sidebar clock to 02:00. Keep the default recipient and enter a total payment of CNY 5,000. Review the payment and optionally compare the three banks.
-2. The default bank deducts a CNY 10 fee. At 1.0850 HKD per CNY, the recipient receives HKD 5,414.15. Confirm the booking to lock the rate.
+2. The default bank deducts a CNY 10 fee. At 92.62 CNY per 100 HKD, the recipient receives HKD 5,387.61. Confirm the booking to lock the rate.
 3. Move the clock to 07:00 to submit the booking. At 07:05, the screen automatically shows receipts for all submitted orders. Every normal order is pending at 07:00 and confirms settlement at 07:05, for any recipient and either currency. With no submitted orders, the screen reports that there are no valid orders.
 4. At 11:00, all original receipts remain visible, followed by a separate list of returned orders. If every payment succeeded, or no orders were submitted, the list is empty. Correcting an input error before booking does not cause a refund.
 5. For a return, use any recipient and either currency. At 07:00, open the pending order, expand the simulated receiving-bank notice and send a suspension notice for that payment. The 07:05 receipt explains the return; the 11:00 receipt breaks down the refund. Other transactions settle normally.

@@ -3,6 +3,7 @@ import re
 import streamlit as st
 
 _STRINGS = """
+每 100 港元所需人民币 · 香港时间|CNY per 100 HKD · Hong Kong time
 锁价消除的模拟到账波动区间|Simulated credit range removed by locking
 按预约至开窗各时点预计到账的最高值减最低值计算。锁价后区间为零；该值不是节省金额。|Highest minus lowest projected credit from booking to opening. Locking fixes the range at zero. This measures variability, not savings.
 海湾银行|Bay Bank
@@ -182,9 +183,28 @@ _TERMS = dict(line.split("|", 1) for line in _STRINGS.strip().splitlines())
 _PATTERN = re.compile("|".join(map(re.escape, sorted(_TERMS, key=len, reverse=True))))
 
 
+# Normalize old event messages as well as current interface copy.
+_PUBLIC_COPY = {
+    " · 教学模拟": "", "（模拟）": "", "模拟": "", "香港演示时间": "香港时间",
+    "（仅输入手册中的虚构号码）": "", "，参照使用手册中的虚构示例": "",
+    "演示档案": "登记档案", "当前演示的": "当前的",
+}
+_PUBLIC_EN = {
+    " · Simulation": "", " (simulated)": "", "Simulated ": "", "simulated ": "",
+    "Simulate receiving bank notice": "Receiving bank notice",
+    "Hong Kong demo time": "Hong Kong time", " (use fictional examples only)": "",
+    " against the fictional example in the guide": "", "in this demo": "in this workspace",
+}
+
+
 def tr(value):
-    if not st.session_state.get("english", False) or not isinstance(value, str):
+    if not isinstance(value, str):
         return value
-    return _PATTERN.sub(lambda m: _TERMS[m.group()], value).translate(
-        str.maketrans({"：": ":", "；": ";", "。": ".", "（": "(", "）": ")", "，": ",", "｜": "|"})
-    )
+    english = st.session_state.get("english", False)
+    if english:
+        value = _PATTERN.sub(lambda m: _TERMS[m.group()], value).translate(
+            str.maketrans({"：": ":", "；": ";", "。": ".", "（": "(", "）": ")", "，": ",", "｜": "|"})
+        )
+    for old, new in (_PUBLIC_EN if english else _PUBLIC_COPY).items():
+        value = value.replace(old, new)
+    return value
