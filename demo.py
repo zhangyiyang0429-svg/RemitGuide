@@ -18,8 +18,8 @@ D = Decimal
 BANKS = ("海湾银行", "明港银行", "远洋银行")
 HOURS = ("23:00",) + tuple(f"{h:02}:00" for h in range(8))
 # 教学用官方参考值；模拟银行在同一时点加上各自的报价差额。
-REFERENCE = tuple(map(D, ("92.10", "92.28", "92.16", "92.42", "92.30",
-                          "92.49", "92.38", "92.61", "92.90")))
+REFERENCE = tuple(map(D, ("92.10", "92.72", "92.56", "92.42", "92.17",
+                          "92.67", "92.78", "92.29", "92.90")))
 NORMAL = "正常"
 # 演示备注：全部资料均为虚构。按所选收款路径核对登记号码、户名和银行；
 # 付款人地址与模拟客户档案比对。回执取自匹配账户的模拟银行脚本。
@@ -358,19 +358,7 @@ def fx_dialog(o):
     q = o["quote"]
     opening = quote(q["bank"], 8, q["total"], q["currency"], q.get("receiving_bank", ""))
     delta = money(D(q["net"]) - D(opening["net"]))
-    st.write(tr(f"锁定报价 {rate_label(q)} · 07:00 开窗报价 {rate_label(opening)}"))
-    st.write(tr(f"锁价实收 {q['net']} · 开窗提交预计实收 {opening['net']} {q['currency']}"))
-    st.metric(tr("锁价相对开窗的到账差额"), f"{delta:+,.2f} {q['currency']}")
-    path = [D(q["net"])] + [
-        D(quote(q["bank"], h, q["total"], q["currency"], q.get("receiving_bank", ""))["net"])
-        for h in range(q["hour"] + 1, 9)
-    ]
-    st.metric(tr("锁价消除的模拟到账波动区间"), f"{money(max(path) - min(path)):,.2f} {q['currency']}")
-    st.caption(tr("按预约至开窗各时点预计到账的最高值减最低值计算。锁价后区间为零；该值不是节省金额。"))
-    if q["currency"] == "CNY":
-        st.info(tr("本笔按人民币到账，无汇率敞口。"))
-    else:
-        st.caption(tr("锁价提前确定了到账金额。正数表示锁价多收，负数表示锁价少收。比较采用同一银行、金额和手续费。"))
+    st.metric(tr("锁价相对开窗的到账差额") + " · " + q["currency"], f"{abs(delta):,.2f}")
 
 
 def show_receipt(o):
@@ -416,7 +404,6 @@ def payment(owner, clock):
         available = capacity(holder, orders(owner))
         st.metric(tr("可用余额 · CNY"), f"{available[0]:,.2f}")
         st.caption(tr(f"单笔额度 {available[1]:,.2f} CNY　｜　今日剩余额度 {available[2]:,.2f} CNY"))
-        bank = st.selectbox(tr("报价银行"), BANKS, format_func=tr, key="ui_402")
         addresses = list(PAYER_ADDRESSES.values())
         address = st.selectbox(tr("付款人登记地址（模拟）"), addresses, index=addresses.index(PAYER_ADDRESSES[holder]),
                                key="address_" + holder, accept_new_options=True, help=tr("选择登记地址，或输入新地址进行核验。"), format_func=tr)
@@ -445,9 +432,14 @@ def payment(owner, clock):
         st.subheader(tr("汇款金额"))
         budget = st.number_input(tr("付款总额 · CNY（含手续费）"), 0.01, 1000000.0, 5000.0, step=100.0, key="ui_429")
         currency = st.selectbox(tr("收款币种"), ("HKD", "CNY"), format_func=tr, key="ui_430")
+    with st.container(border=True):
+        bank = st.selectbox(tr("报价银行"), BANKS, format_func=tr, key="quote_provider")
+        st.button("Open API", disabled=True)
+        st.table([{tr("付款银行"): tr(provider), tr("手续费 CNY"): offer["fee"],
+                   tr("汇率"): rate_label(offer)}
+                  for provider in BANKS for offer in [quote(provider, hour, budget, currency, recipient_bank)]])
         preview = quote(bank, hour, budget, currency, recipient_bank)
         st.metric(tr(f"预计实收 · {currency}"), f"{D(preview['net']):,.2f}")
-        st.caption(tr(f"手续费 {preview['fee']} CNY　｜　{rate_label(preview)}"))
     data = dict(holder=holder, name=name, method=method, number=number, bank=recipient_bank, address=address, document=document, sample_id=sample_id)
     fingerprint = (holder, bank, method, recipient_bank, name, number, budget, currency, address, document, sample_id)
     if st.button(tr("下一步 · 核对汇款"), type="primary", disabled=bool(error) or unavailable):
@@ -464,11 +456,6 @@ def payment(owner, clock):
     st.divider()
     st.subheader(tr("核对汇款"))
     choice = bank
-    if st.checkbox(tr("比较其他可用银行"), key="ui_447"):
-        st.table([{tr("付款银行"): tr(b), tr("扣款 CNY"): tr(str(money(budget))), tr("手续费 CNY"): tr(r["fee"]),
-                   tr("汇率"): rate_label(r), tr(f"实收 {currency}"): tr(r["net"])}
-                  for b in BANKS for r in [quote(b, hour, budget, currency, recipient_bank)]])
-        choice = st.selectbox(tr("选择付款银行"), BANKS, index=BANKS.index(bank), key="bank_choice", format_func=tr)
     q = quote(choice, hour, budget, currency, recipient_bank)
     st.write(tr(f"**{choice}**　·　{method}尾号 {number[-4:]}"))
     cols = st.columns(3)
@@ -526,9 +513,7 @@ def history(owner):
                 suspend_credit(owner, ident)
                 st.rerun()
     if o["state"] in ("确认中", "退款在途"):
-        st.info(tr("请查询原交易；该笔付款已扣款。查询只读取银行的最新回执。"))
-        if st.button(tr("查询原交易")):
-            st.info(tr("模拟银行当前状态：" + orders_by_id(owner, ident)["state"]))
+        st.info(tr("模拟银行当前状态：" + o["state"]))
     if o["state"] in ("已拒绝", "未提交", "待授权", "待补资料", "银行复核中", "待核实"):
         st.caption(tr("补充资料或联系银行完成处理后，可重新填写申请。"))
         if st.button(tr("修改后重新预约")):
@@ -560,15 +545,16 @@ def confirm_clear(owner):
 
 def main():
     st.set_page_config(page_title="RemitGuide", page_icon="💱", layout="wide")
-    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}.route {background:linear-gradient(110deg,#103b49,#24575b);padding:1.3rem 1.6rem;border-radius:16px;color:white;margin-bottom:.8rem}.route strong{font-size:1.35rem}.route span{color:#97d8ca}.route small{display:block;margin-top:.5rem;color:#d4e8e4}[data-testid="stMetric"]{padding:.7rem 1rem;border-left:4px solid #30938b;background:#eff7f5;border-radius:0 12px 12px 0;color:#173f46}[data-testid="stVerticalBlockBorderWrapper"]{box-shadow:0 4px 18px rgba(22,72,83,.07)} [data-testid="stMainBlockContainer"]{padding-bottom:4rem} .route{border-bottom:4px solid #68baaa;background:radial-gradient(ellipse at 90% 10%,#347672,transparent 50%),#103b49}.route span{letter-spacing:.14em} [data-testid="stMetricValue"]{font-variant-numeric:tabular-nums} [data-testid="stExpander"]{border-radius:14px;overflow:hidden} [data-testid="stMain"]{background:linear-gradient(145deg,#f2f7f6,#fff 65%)} [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]{background:#fff;border-color:#dbe6e3;border-radius:18px} .route{position:relative;isolation:isolate;overflow:hidden;padding:1.55rem 2rem}.route:after{content:"";position:absolute;z-index:-1;right:-3rem;top:-8rem;width:27rem;height:27rem;border-radius:50%;border:1px solid #74b0a8;box-shadow:0 0 0 2rem #ffffff0d,0 0 0 4rem #ffffff09}.route strong{font-size:clamp(1.2rem,2.5vw,1.85rem)} [data-testid="stBaseButton-primary"]{background:#116757;border-color:#116757;border-radius:12px;font-weight:650} </style>""", unsafe_allow_html=True)
-    with st.container(horizontal=True, horizontal_alignment="right"):
-        st.toggle("English / 中文", key="english")
+    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}.route {background:linear-gradient(110deg,#103b49,#24575b);padding:1.3rem 1.6rem;border-radius:16px;color:white;margin-bottom:.8rem}.route strong{font-size:1.35rem}.route span{color:#97d8ca}.route small{display:block;margin-top:.5rem;color:#d4e8e4}[data-testid="stMetric"]{padding:.7rem 1rem;border-left:4px solid #30938b;background:#eff7f5;border-radius:0 12px 12px 0;color:#173f46}[data-testid="stVerticalBlockBorderWrapper"]{box-shadow:0 4px 18px rgba(22,72,83,.07)} [data-testid="stMainBlockContainer"]{padding-bottom:4rem} .route{border-bottom:4px solid #68baaa;background:radial-gradient(ellipse at 90% 10%,#347672,transparent 50%),#103b49}.route span{letter-spacing:.14em} [data-testid="stMetricValue"]{font-variant-numeric:tabular-nums} [data-testid="stExpander"]{border-radius:14px;overflow:hidden} [data-testid="stMain"]{background:linear-gradient(145deg,#f2f7f6,#fff 65%)} [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]{background:#fff;border-color:#dbe6e3;border-radius:18px} .route{position:relative;isolation:isolate;overflow:hidden;padding:1.55rem 2rem}.route:after{content:"";position:absolute;z-index:-1;right:-3rem;top:-8rem;width:27rem;height:27rem;border-radius:50%;border:1px solid #74b0a8;box-shadow:0 0 0 2rem #ffffff0d,0 0 0 4rem #ffffff09}.route strong{font-size:clamp(1.2rem,2.5vw,1.85rem)} [data-testid="stBaseButton-primary"]{background:#116757;border-color:#116757;border-radius:12px;font-weight:650} [data-testid="stToolbar"], #MainMenu, [data-testid="stMainMenu"] {display:none!important} </style>""", unsafe_allow_html=True)
     owner = st.query_params.get("demo", "")
     if not re.fullmatch("[a-f0-9]{32}", owner):
         owner = uuid.uuid4().hex
         st.query_params["demo"] = owner
     st.session_state.setdefault("page", "向香港汇款")
     st.sidebar.title("RemitGuide")
+    if st.sidebar.button("切换中文" if st.session_state.get("english") else "Switch to English"):
+        st.session_state.english = not st.session_state.get("english", False)
+        st.rerun()
     st.sidebar.caption(tr("个人银行 · 教学模拟"))
     st.session_state.setdefault("confirmed_time", "23:00")
     with st.sidebar.form("demo_time"):
@@ -623,12 +609,10 @@ def main():
         if unseen and not st.session_state.get("fx_opened") and not st.session_state.get("clear_opened"):
             st.session_state.fx_seen = st.session_state.get("fx_seen", set()) | {o["id"] for o in unseen}
             fx_dialog(unseen[0])
-        if step == 3:
+        returned = [o for o in submitted if o["state"] == "已退汇"]
+        if step == 3 and returned:
             st.divider()
             st.header(tr("11:00 退回记录"))
-            returned = [o for o in submitted if o["state"] == "已退汇"]
-            if not returned:
-                st.info(tr("无订单"))
             for o in returned:
                 with st.expander(tr("退款入账 · " + o["id"]), expanded=True):
                     show_receipt(dict(o, events=[e for e in o["events"] if e[0] == "11:00"]))
