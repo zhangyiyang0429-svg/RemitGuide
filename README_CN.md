@@ -109,7 +109,6 @@ python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 
 提案第 5.3 节列出三个核心接口。RemitGuide Remittance Open API 位于汇款资料区，Confirmation Open API 位于预约核对区，Refund Open API 位于退回记录区。Account Profile 和 FX Quotes 是账户资料与报价辅助接口。按钮仅标示预留接入位置。
 
-[Hong Kong Skyline Restitch – Dec 2007, David Iliff](https://commons.wikimedia.org/wiki/File:Hong_Kong_Skyline_Restitch_-_Dec_2007.jpg) · [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) · CSS crop and overlay.
 
 ## 核心接口调用约定
 
