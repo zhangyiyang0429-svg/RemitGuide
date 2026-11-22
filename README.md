@@ -2,7 +2,7 @@
 
 [Chinese manual](README_CN.md)
 
-RemitGuide simulates a personal remittance from mainland China to Hong Kong. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
+RemitGuide simulates a personal remittance from mainland China to Hong Kong. Use only the fictional profiles below. Identity checks compare the input format and the local recipient record. They do not authenticate a government document or store the full document number on the order.
 
 ## Start the demo
 
@@ -13,7 +13,7 @@ git pull --ff-only origin feat/remittance-flow
 python -m streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-Open port 8501 in your browser. The application interface is in Simplified Chinese. The default paying bank is Bay Bank, the first option. The other two options are Minggang Bank and Ocean Bank. Selecting a funding account loads its simulated address. Select another address to trigger manual review or type a custom address to test formatting.
+Open port 8501 in your browser. The interface supports Chinese and English. The default paying bank is Bay Bank, the first option. The other two options are Minggang Bank and Ocean Bank. Selecting a funding account loads its simulated address. Select another address to trigger manual review or type a custom address to test formatting.
 
 | Payer | Registered address |
 | --- | --- |
@@ -95,4 +95,4 @@ The address region is case-sensitive. A punctuation error is reported before a r
 
 ## Same-name transfer and refund receipts
 
-Selecting Chen loads his registered name, Hong Kong Bank, HKID and account. Replacing the entire set with Zhang’s data fails verification. Pending returns and completed returns show zero credited to the recipient. The simulation retains original fees and uses an illustrative return rate 0.0060 HKD per CNY above the booking rate for the HKD exchange-loss scenario. CNY returns have no FX difference.
+Selecting Chen loads his registered name, Hong Kong Bank, HKID and account. Replacing the entire set with Zhang’s data fails verification. Pending returns and completed returns show zero credited to the recipient. Refunds return the CNY principal and retain only the original fees. Historical settlements keep their booked amounts. Use the top-right language switch. Successful receipts compare the locked amount with the same bank at opening and show the simulated range of possible credits from booking to opening. Locking does not guarantee a better rate.

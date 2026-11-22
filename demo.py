@@ -1,3 +1,4 @@
+"""RemitGuide · 南向汇款教学模拟。启动：streamlit run demo.py"""
 import hashlib
 import json
 import os
@@ -11,13 +12,17 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from remit_language import tr
+
 D = Decimal
 BANKS = ("海湾银行", "明港银行", "远洋银行")
 HOURS = ("23:00",) + tuple(f"{h:02}:00" for h in range(8))
 # 教学用官方参考值；模拟银行在同一时点加上各自的报价差额。
 REFERENCE = tuple(map(D, ("1.0780", "1.0760", "1.0800", "1.0830", "1.0810",
-                          "1.0790", "1.0750", "1.0770", "1.0730")))
+                          "1.0790", "1.0750", "1.0770", "1.0860")))
 NORMAL = "正常"
+# 演示备注：全部资料均为虚构。按所选收款路径核对登记号码、户名和银行；
+# 付款人地址与模拟客户档案比对。回执取自匹配账户的模拟银行脚本。
 RECIPIENTS = (
     dict(name="ZHANGSAN", style="pinyin", document="中国大陆居民身份证", sample_id="110101199001010015",
          bank="中大银行", account="1000000001", phone="90000001"),
@@ -192,11 +197,6 @@ def advance(o, step):
             event(o, "07:05", "退款在途", o.get("return_reason", "收款行退回，等待退款入账。"))
     if step >= 3 and o["step"] < 3 and o["state"] == "退款在途":
         principal = D(q["total"]) - D(q["fee"])
-        rate = D(q["rate"])
-        if o["outcome"] == "退汇·含汇差" and q["currency"] == "HKD":
-            rate += D(".0060")
-            principal = D(q["net"]) / rate
-        o["return_rate"] = str(rate)
         o["refund"] = str(money(principal))
         event(o, "11:00", "已退汇", "退款已入付款账户，原手续费不退。")
     o["step"] = max(o["step"], step)
@@ -229,19 +229,19 @@ def limits_message(amount, available):
                     for label, limit in zip(labels, available) if amount > limit)
 
 
-@st.dialog("收款账户核验")
+@st.dialog(tr("收款账户核验"))
 def missing_account_dialog():
-    st.error("未能查到收款账户")
-    st.write("陈大文在中大银行没有登记账户，请选择香港银行。")
-    if st.button("返回选择收款行"):
+    st.error(tr("未能查到收款账户"))
+    st.write(tr("陈大文在中大银行没有登记账户，请选择香港银行。"))
+    if st.button(tr("返回选择收款行")):
         st.rerun()
 
 
-@st.dialog("付款账户核验未通过")
+@st.dialog(tr("付款账户核验未通过"))
 def limit_dialog(message):
-    st.error(message)
-    st.write("请降低付款金额，或返回表单选择其他付款账户。")
-    if st.button("返回修改"):
+    st.error(tr(message))
+    st.write(tr("请降低付款金额，或返回表单选择其他付款账户。"))
+    if st.button(tr("返回修改")):
         st.rerun()
 
 
@@ -283,7 +283,7 @@ def suspend_credit(owner, ident):
         if row:
             order = json.loads(row[0])
             if order["state"] == "确认中" and order["step"] == 1:
-                order["outcome"] = "退汇·含汇差"
+                order["outcome"] = "退汇·仅手续费"
                 order["return_reason"] = "收款行通知：提交后账户暂停入账，原路退回。"
                 con.execute("UPDATE orders SET body=? WHERE owner=? AND id=?",
                             (json.dumps(order, ensure_ascii=False), owner, ident))
@@ -304,7 +304,6 @@ def experiments():
         ("银行拒绝", "执行返回拒绝", NORMAL, "银行拒绝", False, "已拒绝", "已拒绝"),
         ("待确认", "07:05 获得回执", NORMAL, "延迟回执", False, "已到账", "已到账"),
         ("退汇", "仅损失原手续费", NORMAL, "退汇·仅手续费", False, "已退汇", "已退汇"),
-        ("退汇", "原手续费及汇差", NORMAL, "退汇·含汇差", False, "已退汇", "已退汇"),
         ("隐私异常", "银行留档资料需核验", "地址待核验", "即时到账", False, "已拒绝", "银行复核中"),
     ]
     results = []
@@ -331,7 +330,7 @@ def experiments():
             expected = improved if enhanced else control
             checks = [o["state"] == expected, o["sent"] == int(not enhanced or expected in ("已到账","已退汇","已拒绝"))]
             if category == "退汇":
-                expected_refund = money(D(q["net"]) / (D(q["rate"])+D(".0060"))) if outcome.endswith("含汇差") else D("4990")
+                expected_refund = D(q["total"]) - D(q["fee"])
                 checks.append(D(o["refund"]) == expected_refund)
             if category == "报价更新" and enhanced:
                 old = quote(BANKS[0], 2, 5000, "HKD")
@@ -345,80 +344,101 @@ def experiments():
     return results
 
 
+@st.dialog(tr("锁价比较"))
+def fx_dialog(o):
+    q = o["quote"]
+    opening = quote(q["bank"], 8, q["total"], q["currency"], q.get("receiving_bank", ""))
+    delta = money(D(q["net"]) - D(opening["net"]))
+    st.write(tr(f"锁定报价 {q['rate']} · 07:00 开窗报价 {opening['rate']}"))
+    st.write(tr(f"锁价实收 {q['net']} · 开窗提交预计实收 {opening['net']} {q['currency']}"))
+    st.metric(tr("锁价相对开窗的到账差额"), f"{delta:+,.2f} {q['currency']}")
+    path = [D(q["net"])] + [
+        D(quote(q["bank"], h, q["total"], q["currency"], q.get("receiving_bank", ""))["net"])
+        for h in range(q["hour"] + 1, 9)
+    ]
+    st.metric(tr("锁价消除的模拟到账波动区间"), f"{money(max(path) - min(path)):,.2f} {q['currency']}")
+    st.caption(tr("按预约至开窗各时点预计到账的最高值减最低值计算。锁价后区间为零；该值不是节省金额。"))
+    if q["currency"] == "CNY":
+        st.info(tr("本笔按人民币到账，无汇率敞口。"))
+    else:
+        st.caption(tr("锁价提前确定了到账金额。正数表示锁价多收，负数表示锁价少收。比较采用同一银行、金额和手续费。"))
+
+
 def show_receipt(o):
     q = o["quote"]
-    st.subheader(o["state"])
-    st.caption(f"交易参考编号 {o['id']} · {q['bank']} · 报价 {q['ref']}")
-    st.caption("付款账户：" + o.get("payer", "张三"))
+    st.subheader(tr(o["state"]))
+    st.caption(tr(f"交易参考编号 {o['id']} · {q['bank']} · 报价 {q['ref']}"))
+    st.caption(tr("付款账户：" + o.get("payer", "张三")))
     if q.get("receiving_bank"):
-        st.caption(f"收款行：{q['receiving_bank']} · 收款手续费 {q['receiving_fee']} CNY（已计入总手续费）")
+        st.caption(tr(f"收款行：{q['receiving_bank']} · 收款手续费 {q['receiving_fee']} CNY（已计入总手续费）"))
     if o.get("parent"):
-        st.caption("关联原交易 " + o["parent"])
+        st.caption(tr("关联原交易 " + o["parent"]))
     cols = st.columns(3)
-    cols[0].metric("确认扣款 · CNY", o["debit"])
-    cols[1].metric("确认退回 · CNY", o["refund"])
+    cols[0].metric(tr("确认扣款 · CNY"), o["debit"])
+    cols[1].metric(tr("确认退回 · CNY"), o["refund"])
     credited = q["net"] if o["state"] == "已到账" else "0.00" if o["state"] in ("已退汇", "退款在途", "已拒绝", "未提交") else "待确认"
-    cols[2].metric(f"收款人实际到账 · {q['currency']}", credited)
-    st.write(f"预约报价 {q['rate']}　｜　实际执行汇率 {o['used_rate'] or '待执行'}　｜　提交次数 {o['sent']}")
+    cols[2].metric(tr(f"收款人实际到账 · {q['currency']}"), tr(credited))
+    st.write(tr(f"预约报价 {q['rate']}　｜　实际执行汇率 {o['used_rate'] or '待执行'}　｜　提交次数 {o['sent']}"))
     if o["state"] == "已退汇":
-        difference = money(D(o["debit"]) - D(o["refund"]))
-        st.info(f"原扣款 {o['debit']} − 原手续费 {q['fee']} − 汇兑差额 "
-                f"{money(difference-D(q['fee']))} = 实退 {o['refund']} CNY。")
-        if q["currency"] == "HKD":
-            st.caption(f"原兑换 {q['net']} HKD ÷ 模拟退回汇率 {o['return_rate']} HKD/CNY = {o['refund']} CNY。")
+        if D(o["refund"]) == D(o["debit"]) - D(q["fee"]):
+            st.info(tr(f"原扣款 {o['debit']} − 原手续费 {q['fee']} = 实退 {o['refund']} CNY。"))
         else:
-            st.caption("人民币原币退回，汇兑差额为零。")
+            st.caption(tr("历史回执 · 按原交易规则结算"))
+    if o["state"] == "已到账":
+        if st.button(tr("查看锁价比较"), key="fx_" + o["id"]):
+            st.session_state.fx_opened = True
+            fx_dialog(o)
     if o["sent"]:
         at_open = quote(q["bank"], 8, q["total"], q["currency"])
-        st.caption(f"07:00 市场参考汇率 {at_open['rate']} · 订单确认汇率 {q['rate']}")
+        st.caption(tr(f"07:00 市场参考汇率 {at_open['rate']} · 订单确认汇率 {q['rate']}"))
     for stamp, state, msg in o["events"]:
-        st.write(f"**{stamp}　{state}**　{msg}")
+        st.write(tr(f"**{stamp}　{state}**　{msg}"))
 
 
 def payment(owner, clock):
-    st.header("向香港汇款")
-    st.markdown('<div class="route"><strong>中国内地</strong><span> ────── → </span><strong>中国香港</strong><small>跨境支付通 · 本人账户汇款 · 教学模拟</small></div>', unsafe_allow_html=True)
+    st.header(tr("向香港汇款"))
+    st.markdown(tr('<div class="route"><strong>中国内地</strong><span> ────── → </span><strong>中国香港</strong><small>跨境支付通 · 本人账户汇款 · 教学模拟</small></div>'), unsafe_allow_html=True)
     hour = clock
     left, right = st.columns(2)
     with left.container(border=True):
-        st.subheader("付款账户资料")
-        holder = st.selectbox("付款账户", list(ACCOUNTS))
+        st.subheader(tr("付款账户资料"))
+        holder = st.selectbox(tr("付款账户"), list(ACCOUNTS), format_func=tr, key="ui_397")
         profile = PROFILES[holder]
         available = capacity(holder, orders(owner))
-        st.metric("可用余额 · CNY", f"{available[0]:,.2f}")
-        st.caption(f"单笔额度 {available[1]:,.2f} CNY　｜　今日剩余额度 {available[2]:,.2f} CNY")
-        bank = st.selectbox("报价银行", BANKS)
+        st.metric(tr("可用余额 · CNY"), f"{available[0]:,.2f}")
+        st.caption(tr(f"单笔额度 {available[1]:,.2f} CNY　｜　今日剩余额度 {available[2]:,.2f} CNY"))
+        bank = st.selectbox(tr("报价银行"), BANKS, format_func=tr, key="ui_402")
         addresses = list(PAYER_ADDRESSES.values())
-        address = st.selectbox("付款人登记地址（模拟）", addresses, index=addresses.index(PAYER_ADDRESSES[holder]),
-                               key="address_" + holder, accept_new_options=True, help="选择登记地址，或输入新地址进行核验。")
+        address = st.selectbox(tr("付款人登记地址（模拟）"), addresses, index=addresses.index(PAYER_ADDRESSES[holder]),
+                               key="address_" + holder, accept_new_options=True, help=tr("选择登记地址，或输入新地址进行核验。"), format_func=tr)
         error = address_error(address)
         if error:
-            st.error(error)
+            st.error(tr(error))
     with right.container(border=True):
-        st.subheader("收款人资料")
-        method = st.radio("收款方式", ("银行账户", "香港手机号"), horizontal=True)
-        recipient_bank = st.selectbox("香港收款银行", list(RECEIVING_FEES),
-            index=list(RECEIVING_FEES).index(profile["bank"]), key="recv_bank_"+holder, format_func=lambda b: f"{b} · 收款手续费 {money(RECEIVING_FEES[b])} CNY") if method == "银行账户" else ""
-        name = st.text_input("收款人英文登记姓名", profile["name"], key="name_"+holder)
-        document = st.selectbox("收款人证件类型", [r["document"] for r in RECIPIENTS], index=RECIPIENTS.index(profile), key="doc_"+holder)
-        sample_id = st.text_input("收款人证件号码（仅输入手册中的虚构号码）", profile["sample_id"], key="id_"+holder)
-        number = st.text_input("收款账号" if recipient_bank else "香港手机号（+852）",
+        st.subheader(tr("收款人资料"))
+        method = st.radio(tr("收款方式"), ("银行账户", "香港手机号"), horizontal=True, format_func=tr, key="ui_411")
+        recipient_bank = st.selectbox(tr("香港收款银行"), list(RECEIVING_FEES),
+            index=list(RECEIVING_FEES).index(profile["bank"]), key="recv_bank_"+holder, format_func=lambda b: tr(f"{b} · 收款手续费 {money(RECEIVING_FEES[b])} CNY")) if method == "银行账户" else ""
+        name = st.text_input(tr("收款人英文登记姓名"), profile["name"], key="name_"+holder)
+        document = st.selectbox(tr("收款人证件类型"), [r["document"] for r in RECIPIENTS], index=RECIPIENTS.index(profile), key="doc_"+holder, format_func=tr)
+        sample_id = st.text_input(tr("收款人证件号码（仅输入手册中的虚构号码）"), profile["sample_id"], key="id_"+holder)
+        number = st.text_input(tr("收款账号" if recipient_bank else "香港手机号（+852）"),
                                profile["account"] if recipient_bank else profile["phone"], key="number_"+holder+method)
         unavailable = recipient_bank == "中大银行" and (holder == "陈大文" or number == RECIPIENTS[1]["account"] or name.strip() == "CHENDAIWEN")
         if unavailable:
-            st.error("未能查到收款账户")
+            st.error(tr("未能查到收款账户"))
             if not st.session_state.get("missing_account"):
                 st.session_state.missing_account = True
                 missing_account_dialog()
         else:
             st.session_state.missing_account = False
     with left.container(border=True):
-        st.subheader("汇款金额")
-        budget = st.number_input("付款总额 · CNY（含手续费）", 0.01, 1000000.0, 5000.0, step=100.0)
-        currency = st.selectbox("收款币种", ("HKD", "CNY"))
+        st.subheader(tr("汇款金额"))
+        budget = st.number_input(tr("付款总额 · CNY（含手续费）"), 0.01, 1000000.0, 5000.0, step=100.0, key="ui_429")
+        currency = st.selectbox(tr("收款币种"), ("HKD", "CNY"), format_func=tr, key="ui_430")
     data = dict(holder=holder, name=name, method=method, number=number, bank=recipient_bank, address=address, document=document, sample_id=sample_id)
     fingerprint = (holder, bank, method, recipient_bank, name, number, budget, currency, address, document, sample_id)
-    if st.button("下一步 · 核对汇款", type="primary", disabled=bool(error) or unavailable):
+    if st.button(tr("下一步 · 核对汇款"), type="primary", disabled=bool(error) or unavailable):
         problem = limits_message(money(budget), available)
         if problem:
             st.session_state.review = None
@@ -430,38 +450,38 @@ def payment(owner, clock):
     if st.session_state.get("review") != fingerprint:
         return
     st.divider()
-    st.subheader("核对汇款")
+    st.subheader(tr("核对汇款"))
     choice = bank
-    if st.checkbox("比较其他可用银行"):
-        st.table([{"付款银行": b, "扣款 CNY": str(money(budget)), "手续费 CNY": r["fee"],
-                   "汇率": r["rate"], f"实收 {currency}": r["net"]}
+    if st.checkbox(tr("比较其他可用银行"), key="ui_447"):
+        st.table([{tr("付款银行"): tr(b), tr("扣款 CNY"): tr(str(money(budget))), tr("手续费 CNY"): tr(r["fee"]),
+                   tr("汇率"): tr(r["rate"]), tr(f"实收 {currency}"): tr(r["net"])}
                   for b in BANKS for r in [quote(b, hour, budget, currency, recipient_bank)]])
-        choice = st.selectbox("选择付款银行", BANKS, index=BANKS.index(bank), key="bank_choice")
+        choice = st.selectbox(tr("选择付款银行"), BANKS, index=BANKS.index(bank), key="bank_choice", format_func=tr)
     q = quote(choice, hour, budget, currency, recipient_bank)
-    st.write(f"**{choice}**　·　{method}尾号 {number[-4:]}")
+    st.write(tr(f"**{choice}**　·　{method}尾号 {number[-4:]}"))
     cols = st.columns(3)
-    cols[0].metric("总扣款 · CNY", q["total"])
-    cols[1].metric("手续费 · CNY", q["fee"])
-    cols[2].metric(f"预计实收 · {currency}", q["net"])
-    st.caption(f"付款行手续费 {money(D(q['fee'])-D(q['receiving_fee']))} CNY · 收款行手续费 {q['receiving_fee']} CNY")
-    st.caption(f"兑换本金 {money(D(q['total'])-D(q['fee']))} CNY × 汇率 {q['rate']}。"
-               f"报价 {q['ref']}，本小时有效；确认后保价至本次开窗。")
+    cols[0].metric(tr("总扣款 · CNY"), q["total"])
+    cols[1].metric(tr("手续费 · CNY"), q["fee"])
+    cols[2].metric(tr(f"预计实收 · {currency}"), q["net"])
+    st.caption(tr(f"付款行手续费 {money(D(q['fee'])-D(q['receiving_fee']))} CNY · 收款行手续费 {q['receiving_fee']} CNY"))
+    st.caption(tr(f"兑换本金 {money(D(q['total'])-D(q['fee']))} CNY × 汇率 {q['rate']}。"
+               f"报价 {q['ref']}，本小时有效；确认后保价至本次开窗。"))
     old = quote(choice, st.session_state.quote_hour, budget, currency, recipient_bank)
     if quote_changed(old, q):
-        st.warning(f"原报价已过期。原预计实收 {old['net']}，新预计实收 {q['net']} {currency}。")
-        if st.button("接受本小时新报价"):
+        st.warning(tr(f"原报价已过期。原预计实收 {old['net']}，新预计实收 {q['net']} {currency}。"))
+        if st.button(tr("接受本小时新报价")):
             st.session_state.quote_hour = hour
             st.rerun()
         return
     decision, recipient = verify_recipient(data, q)
     if decision[0] != "已通过":
-        st.warning(decision[1])
+        st.warning(tr(decision[1]))
     else:
-        st.success("自动预检已通过。")
+        st.success(tr("自动预检已通过。"))
     if decision[0] in ("待修正", "受限"):
         return
     label = "保存待处理申请" if decision[0] != "已通过" else ("确认汇款" if hour == 8 else "确认预约并锁定报价")
-    if st.button(label, type="primary"):
+    if st.button(tr(label), type="primary"):
         o = reserve(q, decision, "延迟回执")
         o["parent"] = st.session_state.pop("retry_parent", None)
         if hour == 8:
@@ -477,29 +497,29 @@ def payment(owner, clock):
 
 
 def history(owner):
-    st.header("汇款记录")
+    st.header(tr("汇款记录"))
     rows = orders(owner)
     if not rows:
-        st.info("尚无预约。请先填写汇款。")
+        st.info(tr("尚无预约。请先填写汇款。"))
         return
     by_id = {o["id"]:o for o in rows}
-    ident = st.selectbox("选择订单", list(by_id), format_func=lambda k: k+" · "+by_id[k]["state"])
+    ident = st.selectbox(tr("选择订单"), list(by_id), format_func=lambda k: tr(k+" · "+by_id[k]["state"]), key="ui_498")
     o = by_id[ident]
     show_receipt(o)
     if o["state"] == "确认中" and o["step"] == 1:
-        with st.expander("模拟收款行通知"):
+        with st.expander(tr("模拟收款行通知")):
             if o.get("return_reason"):
-                st.info(o["return_reason"])
-            elif st.button("通知此笔交易暂停入账"):
+                st.info(tr(o["return_reason"]))
+            elif st.button(tr("通知此笔交易暂停入账")):
                 suspend_credit(owner, ident)
                 st.rerun()
     if o["state"] in ("确认中", "退款在途"):
-        st.info("请查询原交易；该笔付款已扣款。查询只读取银行的最新回执。")
-        if st.button("查询原交易"):
-            st.info("模拟银行当前状态：" + orders_by_id(owner, ident)["state"])
+        st.info(tr("请查询原交易；该笔付款已扣款。查询只读取银行的最新回执。"))
+        if st.button(tr("查询原交易")):
+            st.info(tr("模拟银行当前状态：" + orders_by_id(owner, ident)["state"]))
     if o["state"] in ("已拒绝", "未提交", "待授权", "待补资料", "银行复核中", "待核实"):
-        st.caption("补充资料或联系银行完成处理后，可重新填写申请。")
-        if st.button("修改后重新预约"):
+        st.caption(tr("补充资料或联系银行完成处理后，可重新填写申请。"))
+        if st.button(tr("修改后重新预约")):
             st.session_state.retry_parent = ident
             st.session_state.page = "向香港汇款"
             st.session_state.review = None
@@ -510,11 +530,11 @@ def orders_by_id(owner, ident):
     return next(o for o in orders(owner) if o["id"] == ident)
 
 
-@st.dialog("确定清空汇款记录？")
+@st.dialog(tr("确定清空汇款记录？"))
 def confirm_clear(owner):
-    st.write("将删除当前演示的全部汇款记录。清空后无法恢复。")
+    st.write(tr("将删除当前演示的全部汇款记录。清空后无法恢复。"))
     left, right = st.columns(2)
-    if left.button("取消"):
+    if left.button(tr("取消")):
         st.rerun()
     def erase():
         with connect() as con:
@@ -522,49 +542,54 @@ def confirm_clear(owner):
         for key in ("review", "retry_parent"):
             st.session_state.pop(key, None)
 
-    if right.button("确定清空", type="primary", on_click=erase):
+    if right.button(tr("确定清空"), type="primary", on_click=erase):
         st.rerun()
 
 
 def main():
-    st.set_page_config(page_title="RemitGuide · 跨境汇款", page_icon="💱", layout="wide")
-    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}.route {background:linear-gradient(110deg,#103b49,#24575b);padding:1.3rem 1.6rem;border-radius:16px;color:white;margin-bottom:.8rem}.route strong{font-size:1.35rem}.route span{color:#97d8ca}.route small{display:block;margin-top:.5rem;color:#d4e8e4}[data-testid="stMetric"]{padding:.7rem 1rem;border-left:4px solid #30938b;background:#eff7f5;border-radius:0 12px 12px 0;color:#173f46}[data-testid="stVerticalBlockBorderWrapper"]{box-shadow:0 4px 18px rgba(22,72,83,.07)} </style>""", unsafe_allow_html=True)
+    st.set_page_config(page_title="RemitGuide", page_icon="💱", layout="wide")
+    st.markdown("""<style>[data-testid="stSidebar"] {background:#edf4f4} h1,h2,h3 {color:#164853} [data-testid="stMainBlockContainer"] {max-width:78rem;padding-top:3rem} [data-testid="stMetricValue"] {color:#126963}.route {background:linear-gradient(110deg,#103b49,#24575b);padding:1.3rem 1.6rem;border-radius:16px;color:white;margin-bottom:.8rem}.route strong{font-size:1.35rem}.route span{color:#97d8ca}.route small{display:block;margin-top:.5rem;color:#d4e8e4}[data-testid="stMetric"]{padding:.7rem 1rem;border-left:4px solid #30938b;background:#eff7f5;border-radius:0 12px 12px 0;color:#173f46}[data-testid="stVerticalBlockBorderWrapper"]{box-shadow:0 4px 18px rgba(22,72,83,.07)} [data-testid="stMainBlockContainer"]{padding-bottom:4rem} .route{border-bottom:4px solid #68baaa;background:radial-gradient(ellipse at 90% 10%,#347672,transparent 50%),#103b49}.route span{letter-spacing:.14em} [data-testid="stMetricValue"]{font-variant-numeric:tabular-nums} [data-testid="stExpander"]{border-radius:14px;overflow:hidden} </style>""", unsafe_allow_html=True)
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        st.toggle("English / 中文", key="english")
     owner = st.query_params.get("demo", "")
     if not re.fullmatch("[a-f0-9]{32}", owner):
         owner = uuid.uuid4().hex
         st.query_params["demo"] = owner
     st.session_state.setdefault("page", "向香港汇款")
     st.sidebar.title("RemitGuide")
-    st.sidebar.caption("个人银行 · 教学模拟")
+    st.sidebar.caption(tr("个人银行 · 教学模拟"))
     st.session_state.setdefault("confirmed_time", "23:00")
     with st.sidebar.form("demo_time"):
-        entered = st.text_input("香港演示时间（HH:MM）", "23:00", key="draft_demo_time")
-        if st.form_submit_button("确定时间"):
+        entered = st.text_input(tr("香港演示时间（HH:MM）"), "23:00", key="draft_demo_time")
+        if st.form_submit_button(tr("确定时间")):
             if re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", entered.strip()):
                 st.session_state.confirmed_time = entered.strip()
             else:
-                st.error("请输入有效的 24 小时时间，例如 07:03。")
+                st.error(tr("请输入有效的 24 小时时间，例如 07:03。"))
     stamp = st.session_state.confirmed_time
     h, m = map(int, stamp.split(":"))
     minutes = h * 60 + m
     step = 0 if minutes >= 1380 or minutes < 420 else 1 if minutes < 425 else 2 if minutes < 660 else 3
-    st.sidebar.caption(f"已确认 {stamp} · " + ("夜间预约", "开窗提交", "银行回执", "退汇处理")[step])
-    if st.sidebar.button("清空记录"):
+    st.sidebar.caption(tr(f"已确认 {stamp} · " + ("夜间预约", "开窗提交", "银行回执", "退汇处理")[step]))
+    st.session_state.fx_opened = False
+    st.session_state.clear_opened = False
+    if st.sidebar.button(tr("清空记录")):
+        st.session_state.clear_opened = True
         confirm_clear(owner)
     if step == 0:
         for title in ("向香港汇款", "汇款记录"):
-            if st.sidebar.button(title):
+            if st.sidebar.button(tr(title)):
                 st.session_state.page = title
     with st.sidebar:
-        st.markdown("**官方参考汇率（模拟）**")
-        st.caption("1 元人民币可兑换的港元数 · 香港时间")
+        st.markdown(tr("**官方参考汇率（模拟）**"))
+        st.caption(tr("1 元人民币可兑换的港元数 · 香港时间"))
         points = pd.DataFrame({"时间": HOURS, "参考汇率": [float(rate) for rate in REFERENCE]})
         chart = alt.Chart(points).mark_line(color="#176BA0", strokeWidth=3, opacity=0.78, point=True).encode(
             x=alt.X("时间:O", sort=list(HOURS), title=None,
                     axis=alt.Axis(values=list(HOURS[::2]), labelAngle=0)),
             y=alt.Y("参考汇率:Q", title=None, scale=alt.Scale(zero=False),
                     axis=alt.Axis(format=".3f", tickCount=4)),
-            tooltip=["时间", alt.Tooltip("参考汇率:Q", format=".4f")])
+            tooltip=[alt.Tooltip("时间:O", title=tr("时间")), alt.Tooltip("参考汇率:Q", title=tr("参考汇率"), format=".4f")])
         chart = chart.properties(background="transparent", height=165).configure_view(fill="transparent", strokeOpacity=0).configure_axis(gridOpacity=.14, domain=False)
         st.altair_chart(chart, theme=None)
     if step:
@@ -573,23 +598,27 @@ def main():
         history(owner)
         return
     if step >= 2:
-        st.header("07:05 银行回执")
+        st.header(tr("07:05 银行回执"))
         submitted = [o for o in advanced if o["sent"]]
         if not submitted:
-            st.info("无有效订单")
+            st.info(tr("无有效订单"))
         for o in submitted:
             events = [e for e in o["events"] if e[0] != "11:00"]
             receipt = dict(o, events=events, state=events[-1][1], refund="0.00")
-            with st.expander("订单 " + o["id"] + " · " + receipt["state"], expanded=True):
+            with st.expander(tr("订单 " + o["id"] + " · " + receipt["state"]), expanded=True):
                 show_receipt(receipt)
+        unseen = [o for o in submitted if o["state"] == "已到账" and o["id"] not in st.session_state.get("fx_seen", set())]
+        if unseen and not st.session_state.get("fx_opened") and not st.session_state.get("clear_opened"):
+            st.session_state.fx_seen = st.session_state.get("fx_seen", set()) | {o["id"] for o in unseen}
+            fx_dialog(unseen[0])
         if step == 3:
             st.divider()
-            st.header("11:00 退回记录")
+            st.header(tr("11:00 退回记录"))
             returned = [o for o in submitted if o["state"] == "已退汇"]
             if not returned:
-                st.info("无订单")
+                st.info(tr("无订单"))
             for o in returned:
-                with st.expander("退款入账 · " + o["id"], expanded=True):
+                with st.expander(tr("退款入账 · " + o["id"]), expanded=True):
                     show_receipt(dict(o, events=[e for e in o["events"] if e[0] == "11:00"]))
         return
     clock = 0 if h == 23 else h + 1
